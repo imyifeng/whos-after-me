@@ -64,6 +64,11 @@ dependencies {
     val permissionModule: String? = if (modernFapi) "fabric-permission-api-v1" else null
     fapi(
         "fabric-lifecycle-events-v1",
+        // Threat sync protocol (spec v1 §4, ADR-0002): payload registration, the
+        // server hello receiver, and the client play-phase join event.
+        "fabric-networking-api-v1",
+        // Dimension-change state drop (spec v1 §4 lifecycle).
+        "fabric-entity-events-v1",
         "fabric-resource-loader-v0",
         "fabric-content-registries-v0",
         "fabric-registry-sync-v0",

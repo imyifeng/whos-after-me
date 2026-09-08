@@ -26,6 +26,10 @@ stonecutter parameters {
     // records built from an `Identifier` (same shape through 26.x).
     constants["keymap_category_object"] = current.parsed >= "1.21.11"
 
+    // Mojang renamed `ResourceLocation` to `Identifier` at 1.21.11 (verified against
+    // the mapped jars); custom payload ids fork on the same boundary (spec v1 §4).
+    constants["mojang_identifier"] = current.parsed >= "1.21.11"
+
     // NOTE on the spec v1 §6 "entity world accessor rename": the `getWorld` ->
     // `getEntityWorld` rename at 1.21.9 exists only in Yarn. The Mojang names this
     // codebase is written against kept `level()` on every anchor (verified against the
