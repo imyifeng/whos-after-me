@@ -17,6 +17,9 @@
   "entrypoints": {
     "main": [
       "me.imyifeng.whosafterme.WhosAfterMe"
+    ],
+    "client": [
+      "me.imyifeng.whosafterme.WhosAfterMeClient"
     ]
   },
   "depends": {
@@ -24,5 +27,8 @@
     "minecraft": "${minecraft}",
     "${fapi_dep_id}": "*",
     "java": ">=${java_version}"
+  },
+  "suggests": {
+    "modmenu": "*"
   }
 }
