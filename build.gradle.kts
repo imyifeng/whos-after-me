@@ -77,6 +77,14 @@ dependencies {
     // Compile-only so the mod never requires ModMenu at runtime.
     val modmenuVersion: String = sc.properties["deps.modmenu"]
     modCompileOnly("com.terraformersmc:modmenu:$modmenuVersion")
+
+    // Plain JUnit for the pure-logic unit suites (ADR-0004, spec v1 §8): the suites
+    // need no Minecraft classes and run in `check` on every Anchor. No Fabric Loader
+    // JUnit - registry-dependent coverage belongs to the GameTest levels.
+    val junitBomVersion: String = sc.properties["deps.junit_bom"]
+    testImplementation(platform("org.junit:junit-bom:$junitBomVersion"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 loom {
@@ -124,6 +132,12 @@ tasks {
         val name = project.property("mod.id")
         inputs.property("mod_id", name)
         from(rootProject.file("LICENSE")) { rename { "$it-$name" } }
+    }
+
+    // Plain JUnit 5 on the unit test suites (ADR-0004). The `check` task runs them on
+    // every Anchor; `chiseledTest` (stonecutter.gradle.kts) is the all-anchor run.
+    test {
+        useJUnitPlatform()
     }
 
     register<Copy>("buildAndCollect") {

@@ -48,6 +48,8 @@ Other useful commands:
 
 - `./gradlew :<anchor>:build` - build a single Anchor (e.g. `:26.2:build`).
 - `./gradlew :<anchor>:runClient` / `runServer` - dev-run a single Anchor.
+- `./gradlew chiseledTest` - run the plain-JUnit unit suite on every Anchor (the suite
+  also runs on each Anchor via `check`).
 
 ### Toolchain requirements
 
