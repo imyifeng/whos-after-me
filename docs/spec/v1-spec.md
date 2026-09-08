@@ -20,8 +20,8 @@ implementation.
 | HUD look and feel (orbit, arc + triangle, scaling, aiming modes) | Prototype resolution ([#7]) |
 | API/version facts (HUD API forks, renames, availability) | Research [#4], [#5], [#6], [#12], [#17] |
 
-Canonical vocabulary: [CONTEXT.md](../../CONTEXT.md). Status: **pending owner sign-off**
-([#11]).
+Canonical vocabulary: [CONTEXT.md](../../CONTEXT.md). Status: **signed off** in [#11];
+the §11 breakdown is filed as implementation issues [#22]–[#33].
 
 ## 1. Identity and distribution
 
@@ -303,8 +303,6 @@ indicator cap (constant 8), clear grace (constant 1500 ms), protocol mode.
 - **Icon / branding assets** — the only fog left on the map. Needed before first release
   (Modrinth requires a 128×128 icon). Owner input required; blocked only from the release
   ticket, nothing else.
-- **Owner sign-off on this spec** ([#11]) — gates the implementation ticket breakdown
-  being filed.
 
 ## 11. Implementation ticket breakdown
 
@@ -372,3 +370,5 @@ always cover both toolchain eras and both HUD code paths. Rolling work rides nor
 [#14]: https://github.com/imyifeng/whos-after-me/issues/14
 [#17]: https://github.com/imyifeng/whos-after-me/issues/17
 [#18]: https://github.com/imyifeng/whos-after-me/issues/18
+[#22]: https://github.com/imyifeng/whos-after-me/issues/22
+[#33]: https://github.com/imyifeng/whos-after-me/issues/33
