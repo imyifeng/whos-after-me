@@ -1,0 +1,494 @@
+<!doctype html>
+<!--
+  PROTOTYPE (throwaway) — orbit threat-indicator HUD look & feel, v2
+  Wayfinder ticket: https://github.com/imyifeng/whos-after-me/issues/7
+  v2 applies owner feedback: proximity scales arc length + opacity only (no
+  thickness/triangle scaling, no inner rings); every Threat renders
+  independently — co-directional ones simply overlap (nearer on top, longer
+  arc covers shorter), no gaps or merging; defaults 6° arc / 3px / 12px /
+  max 8; two aiming modes (Absolute default, Screen-relative with pitch+FOV
+  projection). Not production code.
+  Run: open this file in any browser (no server needed).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — orbit HUD · Who's After Me</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e13; }
+  body { font: 12px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #cfd6e4; }
+  #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; cursor: grab; }
+  #scene.dragging { cursor: grabbing; }
+
+  .panel {
+    position: fixed; background: rgba(10, 13, 18, 0.86); border: 1px solid #2a3040;
+    border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(4px);
+  }
+  #watermark {
+    top: 10px; left: 50%; transform: translateX(-50%);
+    color: #7f8aa3; letter-spacing: 0.08em; font-size: 11px;
+  }
+  #controls { top: 34px; left: 12px; width: 228px; max-height: calc(100vh - 120px); overflow: auto; }
+  #controls h2, #readout h2 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.1em; color: #8b96ad; text-transform: uppercase; }
+  .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+  .row label { flex: 0 0 88px; color: #aab4c8; }
+  .row input[type=range] { flex: 1; accent-color: #ff5252; }
+  .row .val { flex: 0 0 44px; text-align: right; color: #ffd7d7; }
+  .btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+  button {
+    font: inherit; color: #cfd6e4; background: #1a2130; border: 1px solid #333c52;
+    border-radius: 6px; padding: 3px 8px; cursor: pointer;
+  }
+  button:hover { background: #232c40; }
+  button.active { background: #5c1f24; border-color: #a8434a; color: #ffd9d9; }
+  .chk { display: flex; align-items: center; gap: 6px; margin: 4px 0; color: #aab4c8; }
+  .chk input { accent-color: #ff5252; }
+  #readout { top: 34px; right: 12px; width: 392px; max-height: calc(100vh - 120px); overflow: auto; }
+  #vdesc { margin: 0 0 8px; color: #e8ccb0; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 1px 4px; white-space: nowrap; }
+  td.k { color: #9fd6a0; } td.d { color: #9db8e0; text-align: right; }
+  td.a { color: #d0c290; text-align: right; } td.o { color: #c9a8d8; text-align: right; }
+  tr.beyond td { color: #5b6478; } tr.hidden td { color: #6d7688; font-style: italic; }
+  .counts { margin-top: 6px; color: #8b96ad; }
+
+  #switcher {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px; background: rgba(16, 20, 28, 0.95);
+    border: 1px solid #3d4660; border-radius: 999px; padding: 7px 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.55); z-index: 10;
+  }
+  #switcher button { border-radius: 999px; padding: 2px 10px; font-size: 14px; }
+  #vlabel { min-width: 250px; text-align: center; color: #ffe1e1; font-weight: bold; }
+  #switcher .hint { color: #6d7688; font-size: 10px; margin-left: 4px; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="watermark" class="panel">PROTOTYPE v2 · orbit threat-indicator HUD · Who's After Me · ticket #7</div>
+
+<div id="controls" class="panel">
+  <h2>Scenario</h2>
+  <div class="btns" id="scenarios">
+    <button data-sc="single">Single</button>
+    <button data-sc="spread">Spread</button>
+    <button data-sc="codirectional">Co-directional</button>
+    <button data-sc="stress">Stress ×12</button>
+  </div>
+  <h2>Config</h2>
+  <div class="row"><label>Orbit size</label><input id="orbitScale" type="range" min="55" max="95" value="78"><span class="val" id="orbitScaleV">78%</span></div>
+  <div class="row"><label>Arc length</label><input id="arcLen" type="range" min="4" max="24" value="6"><span class="val" id="arcLenV">6°</span></div>
+  <div class="row"><label>Thickness</label><input id="thick" type="range" min="2" max="9" value="3"><span class="val" id="thickV">3px</span></div>
+  <div class="row"><label>Triangle</label><input id="tri" type="range" min="4" max="16" value="12"><span class="val" id="triV">12px</span></div>
+  <div class="row"><label>Max indic.</label><input id="maxInd" type="range" min="1" max="16" value="8"><span class="val" id="maxIndV">8</span></div>
+  <div class="row"><label>Detect radius</label><input id="radius" type="range" min="8" max="48" value="32"><span class="val" id="radiusV">32b</span></div>
+  <div class="row"><label>FOV</label><input id="fov" type="range" min="30" max="110" value="70"><span class="val" id="fovV">70°</span></div>
+  <div class="chk"><input id="track" type="checkbox" checked><label for="track">Show orbit track</label></div>
+  <div class="chk"><input id="autoLook" type="checkbox"><label for="autoLook">Auto-look around</label></div>
+  <div class="chk"><input id="freeze" type="checkbox"><label for="freeze">Freeze motion</label></div>
+</div>
+
+<div id="readout" class="panel">
+  <h2>Threat state</h2>
+  <p id="vdesc"></p>
+  <table id="tbl"></table>
+  <div class="counts" id="counts"></div>
+</div>
+
+<div id="switcher">
+  <button id="prev" title="Previous aiming mode">‹</button>
+  <span id="vlabel"></span>
+  <button id="next" title="Next aiming mode">›</button>
+  <span class="hint">← → mode · drag to look (up/down too)</span>
+</div>
+
+<script>
+"use strict";
+const TAU = Math.PI * 2, DEG = Math.PI / 180;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smoothstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+
+// ---------- aiming modes ----------
+const MODES = {
+  absolute: { name: "Absolute (compass)",
+    desc: "Compass-style orbit: a Threat straight ahead sits at the top of the orbit no matter where you look. Pitch is ignored — the orbit reads like a ring around you seen from above." },
+  screen: { name: "Screen-relative (view)",
+    desc: "View-relative orbit: Threats are projected through your actual view (pitch + FOV). Near the view center the arrow stays anchored to the compass bearing; toward or past the screen edge it swings to the direction the Threat left the view — look up and ahead-Threats slide to the bottom. Threats behind you point the way you would turn." },
+};
+const ORDER = ["absolute", "screen"];
+const params = new URLSearchParams(location.search);
+let modeKey = (() => {
+  const m = (params.get("mode") || "absolute").toLowerCase();
+  return ORDER.includes(m) ? m : "absolute";
+})();
+
+// ---------- config (live from sliders) ----------
+const cfg = {};
+const $ = (id) => document.getElementById(id);
+function bindSlider(id, fmt) {
+  const el = $(id), out = $(id + "V");
+  const read = () => { cfg[id] = +el.value; out.textContent = fmt(+el.value); };
+  el.addEventListener("input", read); read();
+}
+bindSlider("orbitScale", v => v + "%");
+bindSlider("arcLen", v => v + "°");
+bindSlider("thick", v => v + "px");
+bindSlider("tri", v => v + "px");
+bindSlider("maxInd", v => String(v));
+bindSlider("radius", v => v + "b");
+bindSlider("fov", v => v + "°");
+const opt = { track: $("track"), autoLook: $("autoLook"), freeze: $("freeze") };
+
+// ---------- mobs / scenarios ----------
+const KIND = {
+  zombie:   { label: "zombie (melee)",    color: "#69d069", h: 1.9,  w: 0.6 },
+  skeleton: { label: "skeleton (ranged)", color: "#b8c4cc", h: 1.95, w: 0.55 },
+  golem:    { label: "golem (provoked)",  color: "#e6e6e6", h: 2.7,  w: 0.9 },
+  creeper:  { label: "creeper (fuse)",    color: "#3fe07f", h: 1.7,  w: 0.6 },
+};
+function mob(kind, azDeg, dist, pattern) {
+  const az = azDeg * DEG;
+  return { kind, baseAz: az, baseDist: dist, pattern, az, dist,
+           x: dist * Math.sin(az), z: -dist * Math.cos(az), phase: Math.random() * TAU };
+}
+const SCENARIOS = {
+  single: () => [ mob("zombie", -25, 14, "approach") ],
+  spread: () => [
+    mob("zombie",   15, 10, "approach"),
+    mob("skeleton", 70, 24, "circle"),
+    mob("golem", -115,  8, "approach"),
+    mob("creeper", 150, 18, "approach"),
+    mob("zombie", -170, 28, "circle"),
+  ],
+  codirectional: () => [
+    mob("zombie",   40, 10, "hold"),
+    mob("skeleton", 40, 26, "hold"),
+    mob("creeper", -130, 15, "approach"),
+  ],
+  stress: () => {
+    const m = [
+      mob("zombie",   40,  9, "approach"), mob("skeleton", 40, 22, "hold"),
+      mob("creeper", 150, 12, "approach"), mob("zombie",  150, 34, "circle"),
+      mob("skeleton", 80, 26, "circle"),   mob("golem",   -60,  7, "approach"),
+      mob("zombie", -100, 16, "approach"), mob("creeper", -15, 41, "approach"),
+      mob("skeleton",-175, 30, "circle"),  mob("zombie",  110, 44, "circle"),
+      mob("golem",   -40, 20, "hold"),     mob("skeleton",  5, 13, "approach"),
+    ];
+    m.forEach((x, i) => { x.phase = i * 0.7; });
+    return m;
+  },
+};
+let scenario = "spread";
+let mobs = SCENARIOS[scenario]();
+
+function setScenario(sc) {
+  scenario = sc; mobs = SCENARIOS[sc]();
+  document.querySelectorAll("#scenarios button").forEach(b =>
+    b.classList.toggle("active", b.dataset.sc === sc));
+}
+document.querySelectorAll("#scenarios button").forEach(b =>
+  b.addEventListener("click", () => setScenario(b.dataset.sc)));
+
+// ---------- camera & sim ----------
+let yaw = 0, pitch = 0, t = 0, lastDrag = -10;
+function stepSim(dt) {
+  if (opt.freeze.checked) return;
+  t += dt;
+  for (const m of mobs) {
+    if (m.pattern === "approach") m.dist = Math.max(4, m.baseDist - t * 1.2);
+    else if (m.pattern === "circle") { m.az = m.baseAz + 0.25 * Math.sin(t * 0.35 + m.phase); m.dist = m.baseDist + 2 * Math.sin(t * 0.5 + m.phase); }
+    else { m.az = m.baseAz + 3 * DEG * Math.sin(t * 0.6 + m.phase); m.dist = m.baseDist + 0.6 * Math.sin(t * 0.8 + m.phase); }
+    m.x = m.dist * Math.sin(m.az);
+    m.z = -m.dist * Math.cos(m.az);
+  }
+  if (opt.autoLook.checked && t - lastDrag > 3) yaw += dt * 0.18;
+}
+function relOf(m) { // ground-plane compass angle relative to view, 0 = ahead, + = right
+  const f = m.x * Math.sin(yaw) - m.z * Math.cos(yaw);
+  const r = m.x * Math.cos(yaw) + m.z * Math.sin(yaw);
+  return { forward: f, right: r, ang: Math.atan2(r, f) };
+}
+function angDiff(a, b) { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; }
+
+// ---------- threat view model ----------
+// Per threat: dist, ang (compass), orbit (mode-space orbit angle), fade, px/py (screen offset)
+const STACK_TOL = 8 * DEG;
+function computeView() {
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const F = [Math.sin(yaw) * cp, sp, -Math.cos(yaw) * cp];
+  const R = [Math.cos(yaw), 0, Math.sin(yaw)];
+  const U = [R[1] * F[2] - R[2] * F[1], R[2] * F[0] - R[0] * F[2], R[0] * F[1] - R[1] * F[0]];
+  const tf = Math.tan(cfg.fov / 2 * DEG), tvf = tf * H / W;
+
+  const all = mobs.map(m => {
+    const th = { m, dist: m.dist, ...relOf(m) };
+    const D = [m.x, KIND[m.kind].h / 2 - 1.62, m.z];
+    const f = D[0] * F[0] + D[1] * F[1] + D[2] * F[2];
+    const r = D[0] * R[0] + D[1] * R[1] + D[2] * R[2];
+    const u = D[0] * U[0] + D[1] * U[1] + D[2] * U[2];
+    const fs = Math.max(Math.abs(f), 0.12);      // behind: keep turn direction, avoid blowup
+    const ndcX = (r / fs) / tf, ndcY = (u / fs) / tvf;
+    th.px = ndcX * W / 2;
+    th.py = -ndcY * H / 2;
+    th.ndcDist = Math.hypot(ndcX, ndcY);
+    th.behind = f < 0;
+    th.fade = clamp((cfg.radius - th.dist) / 3, 0, 1);
+    return th;
+  });
+
+  for (const th of all) {
+    if (modeKey === "screen") {
+      // blend compass bearing (stable near view center) into screen direction (dominant off-center)
+      const w = smoothstep(0.1, 1, th.ndcDist);
+      const sl = Math.hypot(th.px, th.py) || 1;
+      const bx = Math.sin(th.ang), by = -Math.cos(th.ang);
+      const vx = bx * (1 - w) + (th.px / sl) * w;
+      const vy = by * (1 - w) + (th.py / sl) * w;
+      const vl = Math.hypot(vx, vy) || 1;
+      th.orbit = Math.atan2(vx / vl, -vy / vl);
+    } else {
+      th.orbit = th.ang;
+    }
+  }
+
+  const inside = all.filter(th => th.dist <= cfg.radius).sort((a, b) => a.dist - b.dist);
+  const shown = inside.slice(0, cfg.maxInd);
+  const groups = [];
+  for (const th of shown) {
+    let g = groups.find(g => Math.abs(angDiff(th.orbit, g.mean)) < STACK_TOL);
+    if (!g) { g = { mean: th.orbit, members: [] }; groups.push(g); }
+    g.members.push(th);
+    g.mean = g.members[0].orbit + angDiff(th.orbit, g.members[0].orbit) * (g.members.length - 1) / g.members.length;
+  }
+  // no stack layout: every Threat renders independently at its own orbit angle;
+  // co-directional pairs just overlap (nearer drawn on top, longer arc covers shorter)
+  return { all, inside, shown, groups };
+}
+function proxOf(th) { return 1 - th.dist / cfg.radius; }
+function arcHalf(th) { return cfg.arcLen * (1 + 2 * proxOf(th)) * DEG / 2; }
+
+// ---------- rendering ----------
+const canvas = $("scene"), ctx = canvas.getContext("2d");
+let W = 0, H = 0;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener("resize", resize); resize();
+
+function orbitGeo() {
+  const fx = cfg.orbitScale / 100;
+  return { cx: W / 2, cy: H / 2, rx: (W / 2) * fx, ry: (H / 2) * fx };
+}
+function orbitPoint(g, a) {
+  if (modeKey === "screen") {
+    const tt = 1 / Math.hypot(Math.sin(a) / g.rx, Math.cos(a) / g.ry);
+    return { x: g.cx + Math.sin(a) * tt, y: g.cy - Math.cos(a) * tt };
+  }
+  return { x: g.cx + g.rx * Math.sin(a), y: g.cy - g.ry * Math.cos(a) };
+}
+function orbitNormal(g, a) {
+  const p = orbitPoint(g, a);
+  if (modeKey === "screen") {
+    const dx = p.x - g.cx, dy = p.y - g.cy, l = Math.hypot(dx, dy) || 1;
+    return { x: dx / l, y: dy / l };
+  }
+  const nx = (p.x - g.cx) / g.rx, ny = (p.y - g.cy) / g.ry, l = Math.hypot(nx, ny) || 1;
+  return { x: nx / l, y: ny / l };
+}
+function drawArc(g, center, halfLen, alpha) {
+  ctx.beginPath();
+  if (modeKey === "screen") {
+    const steps = Math.max(8, Math.ceil((2 * halfLen) / DEG));
+    for (let i = 0; i <= steps; i++) {
+      const p = orbitPoint(g, center - halfLen + (2 * halfLen) * i / steps);
+      i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+  } else {
+    ctx.ellipse(g.cx, g.cy, g.rx, g.ry, 0, center - halfLen - Math.PI / 2, center + halfLen - Math.PI / 2);
+  }
+  ctx.strokeStyle = `rgba(255, 64, 64, ${alpha})`;
+  ctx.lineWidth = cfg.thick;
+  ctx.stroke();
+}
+function drawTri(g, a, size, alpha) {
+  const p = orbitPoint(g, a), n = orbitNormal(g, a);
+  const px = -n.y, py = n.x;
+  ctx.beginPath();
+  ctx.moveTo(p.x + n.x * size, p.y + n.y * size);
+  ctx.lineTo(p.x + px * size * 0.55, p.y + py * size * 0.55);
+  ctx.lineTo(p.x - px * size * 0.55, p.y - py * size * 0.55);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(255, 64, 64, ${alpha})`;
+  ctx.fill();
+}
+
+function drawWorld() {
+  const focal = (W / 2) / Math.tan(cfg.fov / 2 * DEG);
+  const cy = H / 2, cx = W / 2;
+  const pitchOff = Math.tan(pitch) * focal;      // looking up moves the world down the screen
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, "#0d1420"); grd.addColorStop(0.55, "#101725"); grd.addColorStop(1, "#1a2233");
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+
+  const proj = (x, z) => {
+    const f = x * Math.sin(yaw) - z * Math.cos(yaw);
+    const r = x * Math.cos(yaw) + z * Math.sin(yaw);
+    return { f, sx: cx + (r / f) * focal, sy: cy + pitchOff + (1.62 / f) * focal };
+  };
+  // ground grid
+  ctx.strokeStyle = "rgba(140, 160, 200, 0.13)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let gx = -32; gx <= 32; gx += 8) {
+    const p1 = proj(gx, -3), p2 = proj(gx, -64);
+    if (p1.f > 0.5 && p2.f > 0.5) { ctx.moveTo(p1.sx, p1.sy); ctx.lineTo(p2.sx, p2.sy); }
+  }
+  for (let gz = -8; gz >= -64; gz -= 8) {
+    const p1 = proj(-32, gz), p2 = proj(32, gz);
+    if (p1.f > 0.5 && p2.f > 0.5) { ctx.moveTo(p1.sx, p1.sy); ctx.lineTo(p2.sx, p2.sy); }
+  }
+  ctx.stroke();
+  // detection radius ring on the ground
+  ctx.strokeStyle = "rgba(255, 90, 90, 0.14)";
+  ctx.beginPath();
+  let pen = false;
+  for (let i = 0; i <= 72; i++) {
+    const a = (i / 72) * TAU, R = cfg.radius;
+    const p = proj(R * Math.sin(a), -R * Math.cos(a));
+    if (p.f > 0.5) { if (pen) ctx.lineTo(p.sx, p.sy); else ctx.moveTo(p.sx, p.sy); pen = true; }
+    else pen = false;
+  }
+  ctx.stroke();
+
+  // mobs
+  for (const m of mobs) {
+    const f = m.x * Math.sin(yaw) - m.z * Math.cos(yaw);
+    const r = m.x * Math.cos(yaw) + m.z * Math.sin(yaw);
+    if (f < 0.5) continue;
+    const sx = cx + (r / f) * focal, gy = cy + pitchOff + (1.62 / f) * focal;
+    const k = KIND[m.kind];
+    const mh = k.h * focal / f, mw = k.w * focal / f;
+    if (sx < -mw || sx > W + mw) continue;
+    const dim = m.dist > cfg.radius ? 0.35 : 1;
+    ctx.globalAlpha = dim;
+    ctx.fillStyle = k.color;
+    ctx.fillRect(sx - mw / 2, gy - mh, mw, mh * 0.42);          // head
+    ctx.fillStyle = shade(k.color, 0.72);
+    ctx.fillRect(sx - mw / 2, gy - mh * 0.58, mw, mh * 0.58);   // body
+    if (m.kind === "creeper" && m.dist < 8) {                   // fuse flash (world only)
+      ctx.globalAlpha = dim * (0.35 + 0.35 * Math.sin(t * 10));
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(sx - mw / 2, gy - mh, mw, mh);
+    }
+    ctx.globalAlpha = dim * 0.9;
+    ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = "#cfd6e4";
+    ctx.fillText(`${m.kind} ${m.dist.toFixed(0)}m`, sx, gy - mh - 6);
+    ctx.globalAlpha = 1;
+  }
+
+  // crosshair
+  ctx.strokeStyle = "rgba(230, 235, 245, 0.75)"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+  ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
+  ctx.stroke();
+}
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawHUD(view) {
+  const g = orbitGeo();
+  if (opt.track.checked) {
+    ctx.beginPath(); ctx.ellipse(g.cx, g.cy, g.rx, g.ry, 0, 0, TAU);
+    ctx.strokeStyle = "rgba(200, 210, 230, 0.16)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+  // farthest first so nearer Threats render on top
+  for (const th of [...view.shown].sort((a, b) => b.dist - a.dist)) {
+    const alpha = th.fade * (0.3 + 0.7 * proxOf(th));
+    drawArc(g, th.orbit, arcHalf(th), alpha);
+    drawTri(g, th.orbit, cfg.tri, alpha);
+  }
+  const overflow = view.inside.length - view.shown.length;
+  if (overflow > 0) {
+    ctx.font = "11px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255, 170, 170, 0.85)";
+    ctx.fillText(`+${overflow} more out of view (max ${cfg.maxInd})`, g.cx, g.cy + g.ry + 22);
+  }
+}
+
+// ---------- readout ----------
+let lastReadout = 0;
+function updateReadout(view) {
+  if (t - lastReadout < 0.15) return;
+  lastReadout = t;
+  $("vdesc").textContent = MODES[modeKey].desc;
+  const shownSet = new Set(view.shown);
+  const rows = view.all
+    .slice().sort((a, b) => a.dist - b.dist)
+    .map((th) => {
+      const bearing = (th.ang / DEG).toFixed(0);
+      const orbitDeg = (((th.orbit) / DEG) % 360).toFixed(0);
+      const stackIdx = view.groups.findIndex(g => g.members.includes(th));
+      let status;
+      if (th.dist > cfg.radius) status = "beyond Detection radius";
+      else if (!shownSet.has(th)) status = "beyond max cap";
+      else if (stackIdx >= 0 && view.groups[stackIdx].members.length > 1) status = `stack #${stackIdx + 1} pos ${view.groups[stackIdx].members.indexOf(th) + 1}`;
+      else status = view.shown.some(s => s.behind) && th.behind ? "behind you" : "on orbit";
+      const cls = th.dist > cfg.radius ? "beyond" : (shownSet.has(th) ? "" : "hidden");
+      return `<tr class="${cls}"><td class="k">${KIND[th.m.kind].label}</td><td class="d">${th.dist.toFixed(1)}b</td><td class="a">${bearing}°</td><td class="o">${orbitDeg}°</td><td>${status}</td></tr>`;
+    }).join("");
+  $("tbl").innerHTML = rows;
+  $("counts").textContent =
+    `mode ${modeKey} · fov ${cfg.fov}° · pitch ${(pitch / DEG).toFixed(0)}° · ` +
+    `Threats ${view.all.length} · within radius ${view.inside.length} · indicators ${view.shown.length} (max ${cfg.maxInd}) · stacks ${view.groups.filter(g => g.members.length > 1).length}`;
+}
+
+// ---------- main loop ----------
+let prev = performance.now();
+function frame(now) {
+  const dt = Math.min((now - prev) / 1000, 0.05); prev = now;
+  stepSim(dt);
+  ctx.clearRect(0, 0, W, H);
+  drawWorld();
+  const view = computeView();
+  drawHUD(view);
+  updateReadout(view);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- look controls ----------
+let dragX = null, dragY = null;
+canvas.addEventListener("pointerdown", e => { dragX = e.clientX; dragY = e.clientY; canvas.classList.add("dragging"); canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointermove", e => {
+  if (dragX === null) return;
+  yaw += (e.clientX - dragX) * 0.0042;
+  pitch = clamp(pitch - (e.clientY - dragY) * 0.0042, -85 * DEG, 85 * DEG);
+  dragX = e.clientX; dragY = e.clientY; lastDrag = t;
+});
+canvas.addEventListener("pointerup", () => { dragX = null; canvas.classList.remove("dragging"); });
+canvas.addEventListener("dblclick", () => { yaw = 0; pitch = 0; });
+
+// ---------- mode switcher ----------
+function setMode(k) {
+  modeKey = k;
+  $("vlabel").textContent = MODES[k].name;
+  history.replaceState(null, "", `?mode=${k}`);
+}
+$("prev").addEventListener("click", () => setMode(ORDER[(ORDER.indexOf(modeKey) + ORDER.length - 1) % ORDER.length]));
+$("next").addEventListener("click", () => setMode(ORDER[(ORDER.indexOf(modeKey) + 1) % ORDER.length]));
+addEventListener("keydown", e => {
+  if (["INPUT", "TEXTAREA"].includes(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.key === "ArrowLeft") $("prev").click();
+  if (e.key === "ArrowRight") $("next").click();
+});
+setMode(modeKey);
+setScenario("spread");
+</script>
+</body>
+</html>
