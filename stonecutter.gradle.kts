@@ -21,6 +21,11 @@ stonecutter parameters {
     // Fabric API dependency id fork: the `fabric` mod id became `fabric-api` in 26.1.
     constants["fapi_modern_id"] = current.parsed >= "26.1"
 
+    // Keybind category fork (spec v1 §7): `KeyMapping` categories were plain translated
+    // strings until 1.21.10; from 1.21.11 they are registered `KeyMapping.Category`
+    // records built from an `Identifier` (same shape through 26.x).
+    constants["keymap_category_object"] = current.parsed >= "1.21.11"
+
     replacements {
         // Entity world accessor rename in 1.21.9 (spec v1 §6): `level()` became
         // `entityWorld()` in the Mojang names this codebase is written against

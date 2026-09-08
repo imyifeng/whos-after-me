@@ -80,7 +80,10 @@ The per-version API forks are absorbed by the workspace, not by per-anchor build
   selects `HudElementRegistry.addLast` vs the `HudRenderCallback.EVENT` path.
 - **Fabric API dependency id** - the `deps.fapi_dep_id` property (`fabric` ->
   `fabric-api` in 26.1), mirrored by the `fapi_modern_id` constant, is expanded into
-  each jar's `fabric.mod.json`.
+  each jar's `fabric.mod.json`. The same constant forks the keybind helper class
+  (`KeyBindingHelper` -> `KeyMappingHelper` in 26.1).
+- **Keybind category** - the `keymap_category_object` Stonecutter constant (true on
+  1.21.11+) selects registered `KeyMapping.Category` records vs plain category strings.
 - **Mappings era** - the codebase is written against Mojang names on every Anchor;
   `loomx.applyMojangMappings()` applies them on the obfuscated Anchors and is a no-op
   on the unobfuscated ones.

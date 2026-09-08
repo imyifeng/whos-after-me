@@ -1,3 +1,25 @@
 {
-  "modmenu.nameTranslation.whos_after_me": "Who's After Me"
+  "modmenu.nameTranslation.whos_after_me": "Who's After Me",
+
+  "key.whos_after_me.toggle": "Toggle Who's After Me",
+  "key.categories.whos_after_me": "Who's After Me",
+  "key.category.whos_after_me.main": "Who's After Me",
+
+  "whos_after_me.midnightconfig.title": "Who's After Me",
+  "whos_after_me.midnightconfig.enabled": "Enabled",
+  "whos_after_me.midnightconfig.enabled.tooltip": "Master toggle for the threat HUD. Threat sync continues while hidden.",
+  "whos_after_me.midnightconfig.aimingMode": "Aiming mode",
+  "whos_after_me.midnightconfig.aimingMode.tooltip": "How threat directions map onto the orbit: Absolute (compass) or Screen-relative (view).",
+  "whos_after_me.midnightconfig.enum.AimingMode.ABSOLUTE": "Absolute (compass)",
+  "whos_after_me.midnightconfig.enum.AimingMode.SCREEN_RELATIVE": "Screen-relative (view)",
+  "whos_after_me.midnightconfig.detectionRadius": "Detection radius",
+  "whos_after_me.midnightconfig.detectionRadius.tooltip": "Detection radius in blocks (8-128). Read by the server process running the mod.",
+  "whos_after_me.midnightconfig.orbitSize": "Orbit size",
+  "whos_after_me.midnightconfig.orbitSize.tooltip": "Orbit radius as a percentage of the viewport half-dimensions (25-100).",
+  "whos_after_me.midnightconfig.indicatorScale": "Indicator scale",
+  "whos_after_me.midnightconfig.indicatorScale.tooltip": "Multiplies arc thickness and triangle size together (0.5-3.0).",
+  "whos_after_me.midnightconfig.indicatorOpacity": "Indicator opacity",
+  "whos_after_me.midnightconfig.indicatorOpacity.tooltip": "Final multiplier on the computed indicator opacity (0.1-1.0).",
+  "whos_after_me.midnightconfig.pollInterval": "Poll interval",
+  "whos_after_me.midnightconfig.pollInterval.tooltip": "Threat poll cadence in server ticks (1-40). Read by the server process running the mod."
 }

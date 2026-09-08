@@ -25,6 +25,8 @@ repositories {
     }
     strictMaven("https://www.cursemaven.com", "CurseForge", "curse.maven")
     strictMaven("https://api.modrinth.com/maven", "Modrinth", "maven.modrinth")
+    strictMaven("https://maven.midnightdust.eu/releases", "MidnightDust", "eu.midnightdust")
+    strictMaven("https://maven.terraformersmc.com/releases", "Terraformers", "com.terraformersmc")
 }
 
 dependencies {
@@ -48,15 +50,33 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:${property("deps.fabric_loader")}")
     // Core modules that exist across every anchor; feature-specific modules
     // (rendering, networking, ...) are added by their tickets.
+    // Keybind module id fork (spec v1 §6): Fabric API renamed the module (and its
+    // helper class) in 26.1 - `fabric-key-binding-api-v1` -> `fabric-key-mapping-api-v1`.
+    val keybindModule: String = if (sc.current.parsed >= "26.1") "fabric-key-mapping-api-v1" else "fabric-key-binding-api-v1"
     fapi(
         "fabric-lifecycle-events-v1",
         "fabric-resource-loader-v0",
         "fabric-content-registries-v0",
         "fabric-registry-sync-v0",
+        // Toggle keybind registration (spec v1 §7, ADR-0003).
+        keybindModule,
     )
     // The full Fabric API mod for dev runs: the built jar depends on the
     // `fabric`/`fabric-api` mod id, which only exists when the umbrella mod is present.
     modLocalRuntime("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+
+    // MidnightConfig config library (ADR-0003): owns persistence and the config
+    // screen. Jar-in-Jar bundled so users install nothing extra (spec v1 §1).
+    val midnightlibVersion: String = sc.properties["deps.midnightlib"]
+    val midnightlib = "eu.midnightdust:midnightlib:$midnightlibVersion"
+    modImplementation(midnightlib)
+    include(midnightlib)
+
+    // ModMenu is an optional dependency (ADR-0003): the config screen opens from
+    // the Mods list when it is present; without it the JSON file is the surface.
+    // Compile-only so the mod never requires ModMenu at runtime.
+    val modmenuVersion: String = sc.properties["deps.modmenu"]
+    modCompileOnly("com.terraformersmc:modmenu:$modmenuVersion")
 }
 
 loom {
