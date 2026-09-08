@@ -50,16 +50,28 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:${property("deps.fabric_loader")}")
     // Core modules that exist across every anchor; feature-specific modules
     // (rendering, networking, ...) are added by their tickets.
-    // Keybind module id fork (spec v1 §6): Fabric API renamed the module (and its
-    // helper class) in 26.1 - `fabric-key-binding-api-v1` -> `fabric-key-mapping-api-v1`.
-    val keybindModule: String = if (sc.current.parsed >= "26.1") "fabric-key-mapping-api-v1" else "fabric-key-binding-api-v1"
+    // Era boundary for Fabric API module ids (spec v1 §6): 26.1 renamed the keybind
+    // module (and its helper class) and the block-view module, and added the
+    // permission module. One switch serves every id fork below.
+    val modernFapi: Boolean = sc.current.parsed >= "26.1"
+
+    // Keybind module id fork (spec v1 §6): `fabric-key-binding-api-v1` -> `fabric-key-mapping-api-v1`.
+    val keybindModule: String = if (modernFapi) "fabric-key-mapping-api-v1" else "fabric-key-binding-api-v1"
+    // The Minecraft classes this mod compiles against (ServerPlayer, Level,
+    // MinecraftServer) carry Fabric API interface injections, so javac needs the
+    // injected interfaces' modules on the compile classpath.
+    val blockGetterModule: String = if (modernFapi) "fabric-block-getter-api-v2" else "fabric-block-view-api-v2"
+    val permissionModule: String? = if (modernFapi) "fabric-permission-api-v1" else null
     fapi(
         "fabric-lifecycle-events-v1",
         "fabric-resource-loader-v0",
         "fabric-content-registries-v0",
         "fabric-registry-sync-v0",
+        "fabric-data-attachment-api-v1",
+        blockGetterModule,
         // Toggle keybind registration (spec v1 §7, ADR-0003).
         keybindModule,
+        *(permissionModule?.let { arrayOf(it) } ?: arrayOf<String>()),
     )
     // The full Fabric API mod for dev runs: the built jar depends on the
     // `fabric`/`fabric-api` mod id, which only exists when the umbrella mod is present.

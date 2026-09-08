@@ -89,9 +89,10 @@ The per-version API forks are absorbed by the workspace, not by per-anchor build
 - **Mappings era** - the codebase is written against Mojang names on every Anchor;
   `loomx.applyMojangMappings()` applies them on the obfuscated Anchors and is a no-op
   on the unobfuscated ones.
-- **Entity world accessor rename** - the `getWorld` -> `getEntityWorld` accessor rename
-  at 1.21.9 (in the Mojang names used here: `level()` -> `entityWorld()`) is a
-  Stonecutter string replacement.
+- **Entity world accessor** - spec v1 §6 lists a `getWorld` -> `getEntityWorld` rename
+  at 1.21.9, but that fork exists only in Yarn. In the Mojang names used here the
+  accessor is `level()` on every Anchor (verified against the mapped jars), so no
+  replacement is needed and none is applied.
 
 All of these live in [stonecutter.gradle.kts](stonecutter.gradle.kts) (constants,
 replacements) and [stonecutter.properties.toml](stonecutter.properties.toml)

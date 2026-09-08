@@ -26,14 +26,12 @@ stonecutter parameters {
     // records built from an `Identifier` (same shape through 26.x).
     constants["keymap_category_object"] = current.parsed >= "1.21.11"
 
-    replacements {
-        // Entity world accessor rename in 1.21.9 (spec v1 §6): `level()` became
-        // `entityWorld()` in the Mojang names this codebase is written against
-        // (Yarn renamed the same accessor `getWorld()` -> `getEntityWorld()`).
-        string(current.parsed >= "1.21.9") {
-            replace(".level()", ".entityWorld()")
-        }
-    }
+    // NOTE on the spec v1 §6 "entity world accessor rename": the `getWorld` ->
+    // `getEntityWorld` rename at 1.21.9 exists only in Yarn. The Mojang names this
+    // codebase is written against kept `level()` on every anchor (verified against the
+    // mapped jars for 1.21.1, 1.21.11, 26.1.2, and 26.2), so there is deliberately no
+    // replacement for it - a previous `.level()` -> `.entityWorld()` rewrite produced
+    // calls that compile on no anchor.
 }
 
 // Stonecutter 0.9 dropped the built-in chiseled tasks, so the spec v1 §9
