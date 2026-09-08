@@ -20,12 +20,16 @@
     ],
     "client": [
       "me.imyifeng.whosafterme.WhosAfterMeClient"
+    ],
+    "modmenu": [
+      "me.imyifeng.whosafterme.config.ModMenuIntegration"
     ]
   },
   "depends": {
     "fabricloader": ">=0.17",
     "minecraft": "${minecraft}",
     "${fapi_dep_id}": "*",
+    "midnightlib": "*",
     "java": ">=${java_version}"
   },
   "suggests": {
