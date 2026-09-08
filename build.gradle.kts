@@ -53,13 +53,23 @@ dependencies {
     // Keybind module id fork (spec v1 §6): Fabric API renamed the module (and its
     // helper class) in 26.1 - `fabric-key-binding-api-v1` -> `fabric-key-mapping-api-v1`.
     val keybindModule: String = if (sc.current.parsed >= "26.1") "fabric-key-mapping-api-v1" else "fabric-key-binding-api-v1"
+    // The Minecraft classes this mod compiles against (ServerPlayer, Level,
+    // MinecraftServer) carry Fabric API interface injections, so javac needs the
+    // injected interfaces' modules on the compile classpath. Module id forks (spec v1
+    // §6 era boundary): `fabric-block-view-api-v2` became `fabric-block-getter-api-v2`
+    // in 26.1, and the permission module only exists from 26.1 on.
+    val blockGetterModule: String = if (sc.current.parsed >= "26.1") "fabric-block-getter-api-v2" else "fabric-block-view-api-v2"
+    val permissionModule: String? = if (sc.current.parsed >= "26.1") "fabric-permission-api-v1" else null
     fapi(
         "fabric-lifecycle-events-v1",
         "fabric-resource-loader-v0",
         "fabric-content-registries-v0",
         "fabric-registry-sync-v0",
+        "fabric-data-attachment-api-v1",
+        blockGetterModule,
         // Toggle keybind registration (spec v1 §7, ADR-0003).
         keybindModule,
+        *(permissionModule?.let { arrayOf(it) } ?: arrayOf<String>()),
     )
     // The full Fabric API mod for dev runs: the built jar depends on the
     // `fabric`/`fabric-api` mod id, which only exists when the umbrella mod is present.
