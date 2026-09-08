@@ -34,6 +34,10 @@ deps.midnightlib = "1.9.3+1.21.1-fabric"
 # opens from the Mods list; users without ModMenu keep the JSON file as the surface.
 deps.modmenu = "11.0.4"
 
+# Plain JUnit for the pure-logic unit suites (ADR-0004): anchor-independent, so one
+# BOM version serves every anchor.
+deps.junit_bom = "5.13.4"
+
 # Mod compatibility range in fabric.mod.json
 ["1.21.1"]
 mod.mc_compat = ">=1.21 <=1.21.1"

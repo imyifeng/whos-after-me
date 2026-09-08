@@ -44,3 +44,11 @@ tasks.register("chiseledBuild") {
     description = "Builds all anchors and collects the jars in `build/libs/`"
     dependsOn(subprojects.map { "${it.path}:buildAndCollect" })
 }
+
+// The plain-JUnit unit suites (ADR-0004, spec v1 §8) run in `check` on every anchor;
+// this is the one-command all-anchor test run, mirroring `chiseledBuild`.
+tasks.register("chiseledTest") {
+    group = "verification"
+    description = "Runs the unit test suite on every anchor"
+    dependsOn(subprojects.map { "${it.path}:test" })
+}
