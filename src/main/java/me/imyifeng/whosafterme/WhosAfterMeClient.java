@@ -3,6 +3,7 @@ package me.imyifeng.whosafterme;
 import com.mojang.blaze3d.platform.InputConstants;
 import eu.midnightdust.lib.config.MidnightConfig;
 import me.imyifeng.whosafterme.config.WhosAfterMeConfig;
+import me.imyifeng.whosafterme.net.ClientSync;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -26,8 +27,10 @@ import org.lwjgl.glfw.GLFW;
  * <p>Registers the toggle keybind (spec v1 §7, ADR-0003): one {@link KeyMapping} in the
  * vanilla Controls screen, shipping unbound. The keybind and the config screen's toggle
  * are one persisted {@code enabled} setting with two entry points - the keybind flips it
- * live and writes the same JSON file MidnightConfig owns. Later tickets extend this
- * initializer with the HUD registration (spec v1 §11 ticket 8).
+ * live and writes the same JSON file MidnightConfig owns. Also registers the client
+ * side of the sync protocol: the hello handshake and the threat_sync receiver
+ * (spec v1 §4). Later tickets extend this initializer with the HUD registration
+ * (spec v1 §11 ticket 8).
  */
 @Environment(EnvType.CLIENT)
 public class WhosAfterMeClient implements ClientModInitializer {
@@ -42,6 +45,9 @@ public class WhosAfterMeClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // The client side of the threat sync protocol (spec v1 §4): hello on
+        // play-phase join, threat_sync received on the client thread.
+        ClientSync.register();
         //? if keymap_category_object {
         toggleHud = register(new KeyMapping(
                 "key.whos_after_me.toggle", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, TOGGLE_CATEGORY));

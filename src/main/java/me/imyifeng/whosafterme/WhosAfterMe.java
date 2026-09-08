@@ -3,6 +3,7 @@ package me.imyifeng.whosafterme;
 import eu.midnightdust.lib.config.MidnightConfig;
 import me.imyifeng.whosafterme.config.WhosAfterMeConfig;
 import me.imyifeng.whosafterme.detection.ThreatDetector;
+import me.imyifeng.whosafterme.net.SyncNetworking;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
@@ -16,10 +17,8 @@ import org.slf4j.LoggerFactory;
  * <p>Initializes the MidnightConfig config here so each environment loads its own
  * {@code config/whos_after_me.json}: the server process reads {@code detectionRadius}
  * and {@code pollInterval} from its own file (ADR-0005 side semantics, spec v1 §7).
- * Also registers the server detection engine's tick hook (spec v1 §3, ADR-0001).
- *
- * <p>Later tickets extend this initializer: the sync protocol payload registration
- * (spec v1 §11 ticket 6).
+ * Also registers the sync protocol payloads (spec v1 §4, ADR-0002) and the server
+ * detection engine's tick hook (spec v1 §3, ADR-0001).
  */
 public class WhosAfterMe implements ModInitializer {
     public static final String MOD_ID = "whos_after_me";
@@ -31,6 +30,9 @@ public class WhosAfterMe implements ModInitializer {
     @Override
     public void onInitialize() {
         MidnightConfig.init(MOD_ID, WhosAfterMeConfig.class);
+        // Payload types before any receiver registration, on both logical sides
+        // (spec v1 §4); the hello receiver registers inside ThreatDetector.register().
+        SyncNetworking.register();
         ThreatDetector.register();
 
         EnvType environment = FabricLoader.getInstance().getEnvironmentType();
