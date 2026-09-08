@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "${id}",
+  "version": "${version}",
+  "name": "${name}",
+  "description": "On-screen orbit indicators for mobs that currently intend to attack the player, shown through walls and verified server-side.",
+  "authors": [
+    "imyifeng"
+  ],
+  "contact": {
+    "homepage": "https://github.com/imyifeng/whos-after-me",
+    "sources": "https://github.com/imyifeng/whos-after-me",
+    "issues": "https://github.com/imyifeng/whos-after-me/issues"
+  },
+  "license": "Apache-2.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "me.imyifeng.whosafterme.WhosAfterMe"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17",
+    "minecraft": "${minecraft}",
+    "${fapi_dep_id}": "*",
+    "java": ">=${java_version}"
+  }
+}

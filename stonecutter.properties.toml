@@ -1,0 +1,65 @@
+# Centralized workspace properties (https://stonecutter.kikugie.dev/wiki/config/properties).
+# Global keys apply to every anchor; `["<anchor>"]` sections override them per anchor.
+
+mod.id = "whos_after_me"
+mod.name = "Who's After Me"
+mod.group = "me.imyifeng.whosafterme"
+mod.version = "0.1.0"
+
+deps.fabric_loader = "0.19.5"
+
+# Loom version pin (ADR-0006): 1.17-SNAPSHOT for both Loom plugin ids.
+loomx.loom_version = "1.17-SNAPSHOT"
+
+# Toolchain era (ADR-0006, spec v1 §6): anchors up to 1.21.11 are obfuscated and
+# build with the remapping Loom; 26.1 and above are unobfuscated and build with the
+# no-remap Loom. NOTE: ADR-0006 expected the split at 1.21.11, but Fabric kept 1.21.11
+# obfuscated (https://fabricmc.net/2025/12/05/12111.html) - 26.1 is the first
+# unobfuscated release, and this is also where Fabric API switched its jar packaging
+# and dropped the `fabric` mod id. See README.md.
+loomx.obfuscated = true
+loomx.unobfuscated = false
+
+# Spec v1 §6 fork: the Fabric API mod id in `depends` - `fabric` was renamed to
+# `fabric-api` in 26.1. Also mirrored by the `fapi_modern_id` stonecutter constant.
+deps.fapi_dep_id = "fabric"
+
+# Mod compatibility range in fabric.mod.json
+["1.21.1"]
+mod.mc_compat = ">=1.21 <=1.21.1"
+deps.fabric_api = "0.116.17+1.21.1"
+mod.java = "21"
+
+["1.21.4"]
+mod.mc_compat = ">=1.21.2 <=1.21.4"
+deps.fabric_api = "0.119.4+1.21.4"
+mod.java = "21"
+
+["1.21.8"]
+mod.mc_compat = ">=1.21.6 <=1.21.8"
+deps.fabric_api = "0.136.1+1.21.8"
+mod.java = "21"
+
+# Last obfuscated anchor and the last version Yarn was published for: still the
+# remapping Loom, with Mojang mappings layered on top.
+["1.21.11"]
+mod.mc_compat = "=1.21.11"
+deps.fabric_api = "0.141.6+1.21.11"
+mod.java = "21"
+
+# First unobfuscated anchors: no-remap Loom, official Mojang names, Java 25.
+["26.1.2"]
+mod.mc_compat = ">=26.1 <=26.1.2"
+deps.fabric_api = "0.155.3+26.1.2"
+mod.java = "25"
+loomx.obfuscated = false
+loomx.unobfuscated = true
+deps.fapi_dep_id = "fabric-api"
+
+["26.2"]
+mod.mc_compat = "~26.2"
+deps.fabric_api = "0.160.0+26.2"
+mod.java = "25"
+loomx.obfuscated = false
+loomx.unobfuscated = true
+deps.fapi_dep_id = "fabric-api"
