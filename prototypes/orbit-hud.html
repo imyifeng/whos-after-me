@@ -1,10 +1,12 @@
 <!doctype html>
 <!--
-  PROTOTYPE (throwaway) — orbit threat-indicator HUD look & feel
+  PROTOTYPE (throwaway) — orbit threat-indicator HUD look & feel, v2
   Wayfinder ticket: https://github.com/imyifeng/whos-after-me/issues/7
-  Plan: three structurally different variants of the orbit threat-indicator HUD,
-  switchable via ?variant= (or the floating bottom bar), rendered over a cheap
-  first-person canvas sim with scripted Threats. Not production code.
+  v2 applies owner feedback: proximity scales arc length + opacity only (no
+  thickness/triangle scaling, no inner rings); co-directional Threats render
+  as two arrows flanking the shared bearing; defaults 6° arc / 3px / 12px /
+  max 8; two aiming modes (Absolute compass vs Screen-relative projection
+  through pitch + FOV). Not production code.
   Run: open this file in any browser (no server needed).
 -->
 <html lang="en">
@@ -43,11 +45,12 @@
   button.active { background: #5c1f24; border-color: #a8434a; color: #ffd9d9; }
   .chk { display: flex; align-items: center; gap: 6px; margin: 4px 0; color: #aab4c8; }
   .chk input { accent-color: #ff5252; }
-  #readout { top: 34px; right: 12px; width: 372px; max-height: calc(100vh - 120px); overflow: auto; }
+  #readout { top: 34px; right: 12px; width: 392px; max-height: calc(100vh - 120px); overflow: auto; }
   #vdesc { margin: 0 0 8px; color: #e8ccb0; }
   table { border-collapse: collapse; width: 100%; }
   td { padding: 1px 4px; white-space: nowrap; }
-  td.k { color: #9fd6a0; } td.d { color: #9db8e0; text-align: right; } td.a { color: #d0c290; text-align: right; }
+  td.k { color: #9fd6a0; } td.d { color: #9db8e0; text-align: right; }
+  td.a { color: #d0c290; text-align: right; } td.o { color: #c9a8d8; text-align: right; }
   tr.beyond td { color: #5b6478; } tr.hidden td { color: #6d7688; font-style: italic; }
   .counts { margin-top: 6px; color: #8b96ad; }
 
@@ -58,14 +61,14 @@
     box-shadow: 0 4px 18px rgba(0,0,0,0.55); z-index: 10;
   }
   #switcher button { border-radius: 999px; padding: 2px 10px; font-size: 14px; }
-  #vlabel { min-width: 200px; text-align: center; color: #ffe1e1; font-weight: bold; }
+  #vlabel { min-width: 250px; text-align: center; color: #ffe1e1; font-weight: bold; }
   #switcher .hint { color: #6d7688; font-size: 10px; margin-left: 4px; }
 </style>
 </head>
 <body>
 <canvas id="scene"></canvas>
 
-<div id="watermark" class="panel">PROTOTYPE · orbit threat-indicator HUD · Who's After Me · ticket #7</div>
+<div id="watermark" class="panel">PROTOTYPE v2 · orbit threat-indicator HUD · Who's After Me · ticket #7</div>
 
 <div id="controls" class="panel">
   <h2>Scenario</h2>
@@ -77,11 +80,12 @@
   </div>
   <h2>Config</h2>
   <div class="row"><label>Orbit size</label><input id="orbitScale" type="range" min="55" max="95" value="78"><span class="val" id="orbitScaleV">78%</span></div>
-  <div class="row"><label>Arc length</label><input id="arcLen" type="range" min="6" max="36" value="16"><span class="val" id="arcLenV">16°</span></div>
-  <div class="row"><label>Thickness</label><input id="thick" type="range" min="2" max="9" value="4"><span class="val" id="thickV">4px</span></div>
-  <div class="row"><label>Triangle</label><input id="tri" type="range" min="4" max="16" value="9"><span class="val" id="triV">9px</span></div>
+  <div class="row"><label>Arc length</label><input id="arcLen" type="range" min="4" max="24" value="6"><span class="val" id="arcLenV">6°</span></div>
+  <div class="row"><label>Thickness</label><input id="thick" type="range" min="2" max="9" value="3"><span class="val" id="thickV">3px</span></div>
+  <div class="row"><label>Triangle</label><input id="tri" type="range" min="4" max="16" value="12"><span class="val" id="triV">12px</span></div>
   <div class="row"><label>Max indic.</label><input id="maxInd" type="range" min="1" max="16" value="8"><span class="val" id="maxIndV">8</span></div>
   <div class="row"><label>Detect radius</label><input id="radius" type="range" min="8" max="48" value="32"><span class="val" id="radiusV">32b</span></div>
+  <div class="row"><label>FOV</label><input id="fov" type="range" min="30" max="110" value="70"><span class="val" id="fovV">70°</span></div>
   <div class="chk"><input id="track" type="checkbox" checked><label for="track">Show orbit track</label></div>
   <div class="chk"><input id="autoLook" type="checkbox"><label for="autoLook">Auto-look around</label></div>
   <div class="chk"><input id="freeze" type="checkbox"><label for="freeze">Freeze motion</label></div>
@@ -95,32 +99,30 @@
 </div>
 
 <div id="switcher">
-  <button id="prev" title="Previous variant">‹</button>
+  <button id="prev" title="Previous aiming mode">‹</button>
   <span id="vlabel"></span>
-  <button id="next" title="Next variant">›</button>
-  <span class="hint">← → switch · drag to look</span>
+  <button id="next" title="Next aiming mode">›</button>
+  <span class="hint">← → mode · drag to look (up/down too)</span>
 </div>
 
 <script>
 "use strict";
 const TAU = Math.PI * 2, DEG = Math.PI / 180;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smoothstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 
-// ---------- variants ----------
-const VARIANTS = {
-  a: { name: "A — Flat baseline",
-    desc: "Every indicator identical: fixed arc, triangle, full opacity. Co-directional Threats simply overlap (nearest drawn on top). No distance or kind cues.",
-    draw: drawVariantA },
-  b: { name: "B — Proximity",
-    desc: "Nearer Threat = brighter, thicker, longer arc, larger triangle. Co-directional Threats stack on inner rings (nearest stays on the orbit).",
-    draw: drawVariantB },
-  c: { name: "C — Kind-coded",
-    desc: "Kind coding: melee solid · ranged dashed · provoked dotted · creeper pulses. A pair splits the arc around the true direction; ≥3 merge into one arc with ×N.",
-    draw: drawVariantC },
+// ---------- aiming modes ----------
+const MODES = {
+  absolute: { name: "Absolute (compass)",
+    desc: "Compass-style orbit: a Threat straight ahead sits at the top of the orbit no matter where you look. Pitch is ignored — the orbit reads like a ring around you seen from above." },
+  screen: { name: "Screen-relative (view)",
+    desc: "View-relative orbit: Threats are projected through your actual view (pitch + FOV). Near the view center the arrow stays anchored to the compass bearing; toward or past the screen edge it swings to the direction the Threat left the view — look up and ahead-Threats slide to the bottom. Threats behind you point the way you would turn." },
 };
-const ORDER = ["a", "b", "c"];
-let variantKey = (() => {
-  const v = (new URLSearchParams(location.search).get("variant") || "a").toLowerCase();
-  return ORDER.includes(v) ? v : "a";
+const ORDER = ["absolute", "screen"];
+const params = new URLSearchParams(location.search);
+let modeKey = (() => {
+  const m = (params.get("mode") || "absolute").toLowerCase();
+  return ORDER.includes(m) ? m : "absolute";
 })();
 
 // ---------- config (live from sliders) ----------
@@ -137,14 +139,15 @@ bindSlider("thick", v => v + "px");
 bindSlider("tri", v => v + "px");
 bindSlider("maxInd", v => String(v));
 bindSlider("radius", v => v + "b");
+bindSlider("fov", v => v + "°");
 const opt = { track: $("track"), autoLook: $("autoLook"), freeze: $("freeze") };
 
 // ---------- mobs / scenarios ----------
 const KIND = {
-  zombie:   { label: "zombie (melee)",    color: "#69d069", h: 1.9, w: 0.6 },
+  zombie:   { label: "zombie (melee)",    color: "#69d069", h: 1.9,  w: 0.6 },
   skeleton: { label: "skeleton (ranged)", color: "#b8c4cc", h: 1.95, w: 0.55 },
-  golem:    { label: "golem (provoked)",  color: "#e6e6e6", h: 2.7, w: 0.9 },
-  creeper:  { label: "creeper (fuse)",    color: "#3fe07f", h: 1.7, w: 0.6 },
+  golem:    { label: "golem (provoked)",  color: "#e6e6e6", h: 2.7,  w: 0.9 },
+  creeper:  { label: "creeper (fuse)",    color: "#3fe07f", h: 1.7,  w: 0.6 },
 };
 function mob(kind, azDeg, dist, pattern) {
   const az = azDeg * DEG;
@@ -190,7 +193,7 @@ document.querySelectorAll("#scenarios button").forEach(b =>
   b.addEventListener("click", () => setScenario(b.dataset.sc)));
 
 // ---------- camera & sim ----------
-let yaw = 0, t = 0, lastDrag = -10;
+let yaw = 0, pitch = 0, t = 0, lastDrag = -10;
 function stepSim(dt) {
   if (opt.freeze.checked) return;
   t += dt;
@@ -203,63 +206,120 @@ function stepSim(dt) {
   }
   if (opt.autoLook.checked && t - lastDrag > 3) yaw += dt * 0.18;
 }
-function relOf(m) { // -> {forward, right, ang}
+function relOf(m) { // ground-plane compass angle relative to view, 0 = ahead, + = right
   const f = m.x * Math.sin(yaw) - m.z * Math.cos(yaw);
   const r = m.x * Math.cos(yaw) + m.z * Math.sin(yaw);
   return { forward: f, right: r, ang: Math.atan2(r, f) };
 }
+function angDiff(a, b) { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; }
 
-// ---------- threat grouping ----------
-// within detection radius, nearest-first, capped at max indicators, grouped by shared direction
-function threatsInView() {
-  const R = cfg.radius;
-  const all = mobs.map(m => ({ m, ...relOf(m), dist: m.dist }));
-  for (const th of all) th.fade = Math.max(0, Math.min(1, (R - th.dist) / 3));
-  const inside = all.filter(th => th.dist <= R).sort((a, b) => a.dist - b.dist);
+// ---------- threat view model ----------
+// Per threat: dist, ang (compass), orbit (mode-space orbit angle), fade, px/py (screen offset)
+const STACK_TOL = 8 * DEG, STACK_PAD = 2 * DEG;
+function computeView() {
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const F = [Math.sin(yaw) * cp, sp, -Math.cos(yaw) * cp];
+  const R = [Math.cos(yaw), 0, Math.sin(yaw)];
+  const U = [R[1] * F[2] - R[2] * F[1], R[2] * F[0] - R[0] * F[2], R[0] * F[1] - R[1] * F[0]];
+  const tf = Math.tan(cfg.fov / 2 * DEG), tvf = tf * H / W;
+
+  const all = mobs.map(m => {
+    const th = { m, dist: m.dist, ...relOf(m) };
+    const D = [m.x, KIND[m.kind].h / 2 - 1.62, m.z];
+    const f = D[0] * F[0] + D[1] * F[1] + D[2] * F[2];
+    const r = D[0] * R[0] + D[1] * R[1] + D[2] * R[2];
+    const u = D[0] * U[0] + D[1] * U[1] + D[2] * U[2];
+    const fs = Math.max(Math.abs(f), 0.12);      // behind: keep turn direction, avoid blowup
+    const ndcX = (r / fs) / tf, ndcY = (u / fs) / tvf;
+    th.px = ndcX * W / 2;
+    th.py = -ndcY * H / 2;
+    th.ndcDist = Math.hypot(ndcX, ndcY);
+    th.behind = f < 0;
+    th.fade = clamp((cfg.radius - th.dist) / 3, 0, 1);
+    return th;
+  });
+
+  for (const th of all) {
+    if (modeKey === "screen") {
+      // blend compass bearing (stable near view center) into screen direction (dominant off-center)
+      const w = smoothstep(0.1, 1, th.ndcDist);
+      const sl = Math.hypot(th.px, th.py) || 1;
+      const bx = Math.sin(th.ang), by = -Math.cos(th.ang);
+      const vx = bx * (1 - w) + (th.px / sl) * w;
+      const vy = by * (1 - w) + (th.py / sl) * w;
+      const vl = Math.hypot(vx, vy) || 1;
+      th.orbit = Math.atan2(vx / vl, -vy / vl);
+    } else {
+      th.orbit = th.ang;
+    }
+  }
+
+  const inside = all.filter(th => th.dist <= cfg.radius).sort((a, b) => a.dist - b.dist);
   const shown = inside.slice(0, cfg.maxInd);
   const groups = [];
-  const TOL = 8 * DEG;
   for (const th of shown) {
-    let g = groups.find(g => Math.abs(angDiff(th.ang, g.mean)) < TOL);
-    if (!g) { g = { mean: th.ang, members: [] }; groups.push(g); }
+    let g = groups.find(g => Math.abs(angDiff(th.orbit, g.mean)) < STACK_TOL);
+    if (!g) { g = { mean: th.orbit, members: [] }; groups.push(g); }
     g.members.push(th);
-    g.mean = g.members[0].ang + angDiff(th.ang, g.members[0].ang) * (g.members.length - 1) / g.members.length;
+    g.mean = g.members[0].orbit + angDiff(th.orbit, g.members[0].orbit) * (g.members.length - 1) / g.members.length;
+  }
+  // stack layout: arcs edge-to-edge flanking the shared bearing, nearest on the right
+  for (const g of groups) {
+    let right = STACK_PAD / 2, left = -STACK_PAD / 2;
+    g.members.forEach((th, i) => {
+      const half = arcHalf(th);
+      if (i % 2 === 0) { th.offset = right + half; right += 2 * half + STACK_PAD; }
+      else { th.offset = left - half; left -= 2 * half + STACK_PAD; }
+    });
   }
   return { all, inside, shown, groups };
 }
-function angDiff(a, b) { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; }
+function proxOf(th) { return 1 - th.dist / cfg.radius; }
+function arcHalf(th) { return cfg.arcLen * (1 + 2 * proxOf(th)) * DEG / 2; }
 
 // ---------- rendering ----------
 const canvas = $("scene"), ctx = canvas.getContext("2d");
 let W = 0, H = 0;
-function resize() {
-  W = canvas.width = innerWidth; H = canvas.height = innerHeight;
-}
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener("resize", resize); resize();
 
 function orbitGeo() {
   const fx = cfg.orbitScale / 100;
   return { cx: W / 2, cy: H / 2, rx: (W / 2) * fx, ry: (H / 2) * fx };
 }
-function pt(g, a) { return { x: g.cx + g.rx * Math.sin(a), y: g.cy - g.ry * Math.cos(a) }; }
-function normalAt(g, a) {
-  const p = pt(g, a);
-  const nx = (p.x - g.cx) / g.rx, ny = (p.y - g.cy) / g.ry;
-  const l = Math.hypot(nx, ny) || 1;
+function orbitPoint(g, a) {
+  if (modeKey === "screen") {
+    const tt = 1 / Math.hypot(Math.sin(a) / g.rx, Math.cos(a) / g.ry);
+    return { x: g.cx + Math.sin(a) * tt, y: g.cy - Math.cos(a) * tt };
+  }
+  return { x: g.cx + g.rx * Math.sin(a), y: g.cy - g.ry * Math.cos(a) };
+}
+function orbitNormal(g, a) {
+  const p = orbitPoint(g, a);
+  if (modeKey === "screen") {
+    const dx = p.x - g.cx, dy = p.y - g.cy, l = Math.hypot(dx, dy) || 1;
+    return { x: dx / l, y: dy / l };
+  }
+  const nx = (p.x - g.cx) / g.rx, ny = (p.y - g.cy) / g.ry, l = Math.hypot(nx, ny) || 1;
   return { x: nx / l, y: ny / l };
 }
-function drawArc(g, center, halfLen, style) {
-  const { cx, cy, rx, ry } = g;
+function drawArc(g, center, halfLen, alpha) {
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, center - halfLen - Math.PI / 2, center + halfLen - Math.PI / 2);
-  ctx.strokeStyle = `rgba(255, 64, 64, ${style.alpha})`;
-  ctx.lineWidth = style.width;
-  ctx.setLineDash(style.dash || []);
+  if (modeKey === "screen") {
+    const steps = Math.max(8, Math.ceil((2 * halfLen) / DEG));
+    for (let i = 0; i <= steps; i++) {
+      const p = orbitPoint(g, center - halfLen + (2 * halfLen) * i / steps);
+      i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+  } else {
+    ctx.ellipse(g.cx, g.cy, g.rx, g.ry, 0, center - halfLen - Math.PI / 2, center + halfLen - Math.PI / 2);
+  }
+  ctx.strokeStyle = `rgba(255, 64, 64, ${alpha})`;
+  ctx.lineWidth = cfg.thick;
   ctx.stroke();
-  ctx.setLineDash([]);
 }
 function drawTri(g, a, size, alpha) {
-  const p = pt(g, a), n = normalAt(g, a);
+  const p = orbitPoint(g, a), n = orbitNormal(g, a);
   const px = -n.y, py = n.x;
   ctx.beginPath();
   ctx.moveTo(p.x + n.x * size, p.y + n.y * size);
@@ -269,28 +329,19 @@ function drawTri(g, a, size, alpha) {
   ctx.fillStyle = `rgba(255, 64, 64, ${alpha})`;
   ctx.fill();
 }
-function drawBadge(g, a, text, alpha) {
-  const p = pt(g, a), n = normalAt(g, a);
-  ctx.font = "bold 12px ui-monospace, monospace";
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillStyle = `rgba(10, 13, 18, ${alpha * 0.9})`;
-  const w = ctx.measureText(text).width + 8;
-  ctx.fillRect(p.x - n.x * 20 - w / 2, p.y - n.y * 20 - 8, w, 16);
-  ctx.fillStyle = `rgba(255, 200, 200, ${alpha})`;
-  ctx.fillText(text, p.x - n.x * 20, p.y - n.y * 20);
-}
 
 function drawWorld() {
-  // sky/ground split
+  const focal = (W / 2) / Math.tan(cfg.fov / 2 * DEG);
+  const cy = H / 2, cx = W / 2;
+  const pitchOff = Math.tan(pitch) * focal;      // looking up moves the world down the screen
   const grd = ctx.createLinearGradient(0, 0, 0, H);
   grd.addColorStop(0, "#0d1420"); grd.addColorStop(0.55, "#101725"); grd.addColorStop(1, "#1a2233");
   ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
 
-  const focal = (W / 2) / Math.tan(35 * DEG), eyeH = 1.62, cy = H / 2, cx = W / 2;
   const proj = (x, z) => {
     const f = x * Math.sin(yaw) - z * Math.cos(yaw);
     const r = x * Math.cos(yaw) + z * Math.sin(yaw);
-    return { f, r, sx: cx + (r / f) * focal, sy: cy + (eyeH / f) * focal };
+    return { f, sx: cx + (r / f) * focal, sy: cy + pitchOff + (1.62 / f) * focal };
   };
   // ground grid
   ctx.strokeStyle = "rgba(140, 160, 200, 0.13)"; ctx.lineWidth = 1;
@@ -321,25 +372,25 @@ function drawWorld() {
     const f = m.x * Math.sin(yaw) - m.z * Math.cos(yaw);
     const r = m.x * Math.cos(yaw) + m.z * Math.sin(yaw);
     if (f < 0.5) continue;
-    const sxx = cx + (r / f) * focal, gy = cy + (eyeH / f) * focal;
+    const sx = cx + (r / f) * focal, gy = cy + pitchOff + (1.62 / f) * focal;
     const k = KIND[m.kind];
     const mh = k.h * focal / f, mw = k.w * focal / f;
-    if (sxx < -mw || sxx > W + mw) continue;
+    if (sx < -mw || sx > W + mw) continue;
     const dim = m.dist > cfg.radius ? 0.35 : 1;
     ctx.globalAlpha = dim;
     ctx.fillStyle = k.color;
-    ctx.fillRect(sxx - mw / 2, gy - mh, mw, mh * 0.42);                       // head
+    ctx.fillRect(sx - mw / 2, gy - mh, mw, mh * 0.42);          // head
     ctx.fillStyle = shade(k.color, 0.72);
-    ctx.fillRect(sxx - mw / 2, gy - mh * 0.58, mw, mh * 0.58);                // body
-    if (m.kind === "creeper" && m.dist < 8) {                                 // fuse flash
+    ctx.fillRect(sx - mw / 2, gy - mh * 0.58, mw, mh * 0.58);   // body
+    if (m.kind === "creeper" && m.dist < 8) {                   // fuse flash (world only)
       ctx.globalAlpha = dim * (0.35 + 0.35 * Math.sin(t * 10));
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(sxx - mw / 2, gy - mh, mw, mh);
+      ctx.fillRect(sx - mw / 2, gy - mh, mw, mh);
     }
     ctx.globalAlpha = dim * 0.9;
     ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "center";
     ctx.fillStyle = "#cfd6e4";
-    ctx.fillText(`${m.kind} ${m.dist.toFixed(0)}m`, sxx, gy - mh - 6);
+    ctx.fillText(`${m.kind} ${m.dist.toFixed(0)}m`, sx, gy - mh - 6);
     ctx.globalAlpha = 1;
   }
 
@@ -362,7 +413,13 @@ function drawHUD(view) {
     ctx.beginPath(); ctx.ellipse(g.cx, g.cy, g.rx, g.ry, 0, 0, TAU);
     ctx.strokeStyle = "rgba(200, 210, 230, 0.16)"; ctx.lineWidth = 1; ctx.stroke();
   }
-  VARIANTS[variantKey].draw(g, view);
+  // farthest first so nearer Threats render on top
+  for (const th of [...view.shown].sort((a, b) => b.dist - a.dist)) {
+    const a = th.orbit + (th.offset || 0);
+    const alpha = th.fade * (0.3 + 0.7 * proxOf(th));
+    drawArc(g, a, arcHalf(th), alpha);
+    drawTri(g, a, cfg.tri, alpha);
+  }
   const overflow = view.inside.length - view.shown.length;
   if (overflow > 0) {
     ctx.font = "11px ui-monospace, monospace"; ctx.textAlign = "center";
@@ -371,95 +428,30 @@ function drawHUD(view) {
   }
 }
 
-// --- variant A: flat baseline -------------------------------------------
-function drawVariantA(g, view) {
-  // draw farthest first so the nearest lands on top; stacks just overlap
-  const ordered = [...view.shown].sort((a, b) => b.dist - a.dist);
-  for (const th of ordered) {
-    const alpha = 0.95 * th.fade;
-    drawArc(g, th.ang, cfg.arcLen * DEG / 2, { alpha, width: cfg.thick });
-    drawTri(g, th.ang, cfg.tri, alpha);
-  }
-}
-
-// --- variant B: proximity-weighted, radial stacking ----------------------
-function drawVariantB(g, view) {
-  const R = cfg.radius;
-  for (const grp of view.groups) {
-    grp.members.forEach((th, i) => {
-      const prox = 1 - th.dist / R;                 // 0 at edge .. ~1 hugging you
-      const alpha = th.fade * (0.3 + 0.7 * prox) * Math.max(1 - 0.22 * i, 0.35);
-      const ringScale = Math.max(1 - 0.16 * i, 0.55); // stacks move inward, never outward
-      const ring = { ...g, rx: g.rx * ringScale, ry: g.ry * ringScale };
-      drawArc(ring, th.ang, (cfg.arcLen * (0.7 + 0.6 * prox)) * DEG / 2,
-        { alpha, width: Math.max(cfg.thick * (0.75 + 0.6 * prox), 1.5) });
-      drawTri(ring, th.ang, cfg.tri * (0.8 + 0.5 * prox), alpha);
-    });
-  }
-}
-
-// --- variant C: kind-coded, angular split/merge --------------------------
-const KIND_STYLE = {
-  zombie:   { dash: [] },
-  skeleton: { dash: [7, 5] },
-  golem:    { dash: [2, 4] },
-  creeper:  { dash: [], pulse: true },
-};
-function drawVariantC(g, view) {
-  for (const grp of view.groups) {
-    const n = grp.members.length;
-    if (n === 1) {
-      const th = grp.members[0];
-      kindArc(g, th, th.ang, cfg.arcLen * DEG / 2);
-      continue;
-    }
-    if (n === 2) {
-      const [a, b] = grp.members;                   // a = nearer
-      const gap = 3 * DEG, half = cfg.arcLen * DEG / 2;
-      const off = half / 2 + gap / 4, sub = half / 2 - gap / 4;
-      kindArc(g, a, a.ang - off, sub);
-      kindArc(g, b, b.ang + off, sub);
-      drawTri(g, a.ang - off, cfg.tri * 0.8, fadeOf(a));
-      drawTri(g, b.ang + off, cfg.tri * 0.8, fadeOf(b));
-      continue;
-    }
-    // n >= 3: merge into one arc, count badge, nearest triangle on top
-    const nearest = grp.members[0];
-    kindArc(g, nearest, grp.mean, cfg.arcLen * DEG / 2);
-    drawTri(g, grp.mean, cfg.tri, fadeOf(nearest));
-    drawBadge(g, grp.mean, "×" + n, fadeOf(nearest));
-  }
-}
-function fadeOf(th) { return th.fade; }
-function kindArc(g, th, center, halfLen) {
-  const st = KIND_STYLE[th.m.kind];
-  let alpha = 0.9 * th.fade;
-  if (st.pulse && th.dist < 8) alpha *= 0.5 + 0.5 * Math.sin(t * 9);
-  drawArc(g, center, halfLen, { alpha, width: cfg.thick, dash: st.dash });
-}
-
 // ---------- readout ----------
 let lastReadout = 0;
 function updateReadout(view) {
   if (t - lastReadout < 0.15) return;
   lastReadout = t;
-  $("vdesc").textContent = VARIANTS[variantKey].desc;
+  $("vdesc").textContent = MODES[modeKey].desc;
   const shownSet = new Set(view.shown);
   const rows = view.all
     .slice().sort((a, b) => a.dist - b.dist)
-    .map((th, i) => {
-      const deg = (th.ang / DEG).toFixed(0);
+    .map((th) => {
+      const bearing = (th.ang / DEG).toFixed(0);
+      const orbitDeg = (((th.orbit + (th.offset || 0)) / DEG) % 360).toFixed(0);
       const stackIdx = view.groups.findIndex(g => g.members.includes(th));
       let status;
       if (th.dist > cfg.radius) status = "beyond Detection radius";
       else if (!shownSet.has(th)) status = "beyond max cap";
       else if (stackIdx >= 0 && view.groups[stackIdx].members.length > 1) status = `stack #${stackIdx + 1} pos ${view.groups[stackIdx].members.indexOf(th) + 1}`;
-      else status = "on orbit";
+      else status = view.shown.some(s => s.behind) && th.behind ? "behind you" : "on orbit";
       const cls = th.dist > cfg.radius ? "beyond" : (shownSet.has(th) ? "" : "hidden");
-      return `<tr class="${cls}"><td class="k">${KIND[th.m.kind].label}</td><td class="d">${th.dist.toFixed(1)}b</td><td class="a">${deg}°</td><td>${status}</td></tr>`;
+      return `<tr class="${cls}"><td class="k">${KIND[th.m.kind].label}</td><td class="d">${th.dist.toFixed(1)}b</td><td class="a">${bearing}°</td><td class="o">${orbitDeg}°</td><td>${status}</td></tr>`;
     }).join("");
   $("tbl").innerHTML = rows;
   $("counts").textContent =
+    `mode ${modeKey} · fov ${cfg.fov}° · pitch ${(pitch / DEG).toFixed(0)}° · ` +
     `Threats ${view.all.length} · within radius ${view.inside.length} · indicators ${view.shown.length} (max ${cfg.maxInd}) · stacks ${view.groups.filter(g => g.members.length > 1).length}`;
 }
 
@@ -470,7 +462,7 @@ function frame(now) {
   stepSim(dt);
   ctx.clearRect(0, 0, W, H);
   drawWorld();
-  const view = threatsInView();
+  const view = computeView();
   drawHUD(view);
   updateReadout(view);
   requestAnimationFrame(frame);
@@ -478,29 +470,31 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // ---------- look controls ----------
-let dragX = null;
-canvas.addEventListener("pointerdown", e => { dragX = e.clientX; canvas.classList.add("dragging"); canvas.setPointerCapture(e.pointerId); });
+let dragX = null, dragY = null;
+canvas.addEventListener("pointerdown", e => { dragX = e.clientX; dragY = e.clientY; canvas.classList.add("dragging"); canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener("pointermove", e => {
   if (dragX === null) return;
-  yaw += (e.clientX - dragX) * 0.0042; dragX = e.clientX; lastDrag = t;
+  yaw += (e.clientX - dragX) * 0.0042;
+  pitch = clamp(pitch - (e.clientY - dragY) * 0.0042, -85 * DEG, 85 * DEG);
+  dragX = e.clientX; dragY = e.clientY; lastDrag = t;
 });
 canvas.addEventListener("pointerup", () => { dragX = null; canvas.classList.remove("dragging"); });
-canvas.addEventListener("dblclick", () => { yaw = 0; });
+canvas.addEventListener("dblclick", () => { yaw = 0; pitch = 0; });
 
-// ---------- variant switcher ----------
-function setVariant(k) {
-  variantKey = k;
-  $("vlabel").textContent = VARIANTS[k].name;
-  history.replaceState(null, "", `?variant=${k}`);
+// ---------- mode switcher ----------
+function setMode(k) {
+  modeKey = k;
+  $("vlabel").textContent = MODES[k].name;
+  history.replaceState(null, "", `?mode=${k}`);
 }
-$("prev").addEventListener("click", () => setVariant(ORDER[(ORDER.indexOf(variantKey) + ORDER.length - 1) % ORDER.length]));
-$("next").addEventListener("click", () => setVariant(ORDER[(ORDER.indexOf(variantKey) + 1) % ORDER.length]));
+$("prev").addEventListener("click", () => setMode(ORDER[(ORDER.indexOf(modeKey) + ORDER.length - 1) % ORDER.length]));
+$("next").addEventListener("click", () => setMode(ORDER[(ORDER.indexOf(modeKey) + 1) % ORDER.length]));
 addEventListener("keydown", e => {
   if (["INPUT", "TEXTAREA"].includes(e.target.tagName) || e.target.isContentEditable) return;
   if (e.key === "ArrowLeft") $("prev").click();
   if (e.key === "ArrowRight") $("next").click();
 });
-setVariant(variantKey);
+setMode(modeKey);
 setScenario("spread");
 </script>
 </body>
