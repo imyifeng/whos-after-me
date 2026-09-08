@@ -3,10 +3,11 @@
   PROTOTYPE (throwaway) — orbit threat-indicator HUD look & feel, v2
   Wayfinder ticket: https://github.com/imyifeng/whos-after-me/issues/7
   v2 applies owner feedback: proximity scales arc length + opacity only (no
-  thickness/triangle scaling, no inner rings); co-directional Threats render
-  as two arrows flanking the shared bearing; defaults 6° arc / 3px / 12px /
-  max 8; two aiming modes (Absolute compass vs Screen-relative projection
-  through pitch + FOV). Not production code.
+  thickness/triangle scaling, no inner rings); every Threat renders
+  independently — co-directional ones simply overlap (nearer on top, longer
+  arc covers shorter), no gaps or merging; defaults 6° arc / 3px / 12px /
+  max 8; two aiming modes (Absolute default, Screen-relative with pitch+FOV
+  projection). Not production code.
   Run: open this file in any browser (no server needed).
 -->
 <html lang="en">
@@ -215,7 +216,7 @@ function angDiff(a, b) { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d
 
 // ---------- threat view model ----------
 // Per threat: dist, ang (compass), orbit (mode-space orbit angle), fade, px/py (screen offset)
-const STACK_TOL = 8 * DEG, STACK_PAD = 2 * DEG;
+const STACK_TOL = 8 * DEG;
 function computeView() {
   const cp = Math.cos(pitch), sp = Math.sin(pitch);
   const F = [Math.sin(yaw) * cp, sp, -Math.cos(yaw) * cp];
@@ -263,15 +264,8 @@ function computeView() {
     g.members.push(th);
     g.mean = g.members[0].orbit + angDiff(th.orbit, g.members[0].orbit) * (g.members.length - 1) / g.members.length;
   }
-  // stack layout: arcs edge-to-edge flanking the shared bearing, nearest on the right
-  for (const g of groups) {
-    let right = STACK_PAD / 2, left = -STACK_PAD / 2;
-    g.members.forEach((th, i) => {
-      const half = arcHalf(th);
-      if (i % 2 === 0) { th.offset = right + half; right += 2 * half + STACK_PAD; }
-      else { th.offset = left - half; left -= 2 * half + STACK_PAD; }
-    });
-  }
+  // no stack layout: every Threat renders independently at its own orbit angle;
+  // co-directional pairs just overlap (nearer drawn on top, longer arc covers shorter)
   return { all, inside, shown, groups };
 }
 function proxOf(th) { return 1 - th.dist / cfg.radius; }
@@ -415,10 +409,9 @@ function drawHUD(view) {
   }
   // farthest first so nearer Threats render on top
   for (const th of [...view.shown].sort((a, b) => b.dist - a.dist)) {
-    const a = th.orbit + (th.offset || 0);
     const alpha = th.fade * (0.3 + 0.7 * proxOf(th));
-    drawArc(g, a, arcHalf(th), alpha);
-    drawTri(g, a, cfg.tri, alpha);
+    drawArc(g, th.orbit, arcHalf(th), alpha);
+    drawTri(g, th.orbit, cfg.tri, alpha);
   }
   const overflow = view.inside.length - view.shown.length;
   if (overflow > 0) {
@@ -439,7 +432,7 @@ function updateReadout(view) {
     .slice().sort((a, b) => a.dist - b.dist)
     .map((th) => {
       const bearing = (th.ang / DEG).toFixed(0);
-      const orbitDeg = (((th.orbit + (th.offset || 0)) / DEG) % 360).toFixed(0);
+      const orbitDeg = (((th.orbit) / DEG) % 360).toFixed(0);
       const stackIdx = view.groups.findIndex(g => g.members.includes(th));
       let status;
       if (th.dist > cfg.radius) status = "beyond Detection radius";
