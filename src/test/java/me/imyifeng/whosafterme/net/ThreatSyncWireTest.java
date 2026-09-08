@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class ThreatSyncWireTest {
 
     private static ThreatSyncPacket packet(ThreatSyncMode mode, int... entityIds) {
-        List<ThreatSyncPacket.Entry> entries = java.util.Arrays.stream(entityIds)
+        List<ThreatSyncPacket.Entry> entries = Arrays.stream(entityIds)
                 .mapToObj(id -> new ThreatSyncPacket.Entry(id, SyncProtocol.TARGETING))
                 .toList();
         return new ThreatSyncPacket(mode, entries);

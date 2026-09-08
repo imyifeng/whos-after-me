@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import me.imyifeng.whosafterme.detection.ThreatDiff;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ class ThreatSyncPacketTest {
     }
 
     private static Set<Integer> ids(ThreatSyncPacket packet) {
-        return packet.entries().stream().map(ThreatSyncPacket.Entry::entityId).collect(java.util.stream.Collectors.toSet());
+        return packet.entries().stream().map(ThreatSyncPacket.Entry::entityId).collect(Collectors.toSet());
     }
 
     @Test

@@ -55,12 +55,6 @@ public final class ModdedPlayers {
         return fullSyncPending.remove(playerId);
     }
 
-    /** Drops one player's handshake state entirely (relog, forced unmark). */
-    public void forget(UUID playerId) {
-        marked.remove(playerId);
-        fullSyncPending.remove(playerId);
-    }
-
     /** Drops every player not in {@code onlineIds}: a disconnected player is unmarked. */
     public void retainAll(Set<UUID> onlineIds) {
         marked.retainAll(onlineIds);

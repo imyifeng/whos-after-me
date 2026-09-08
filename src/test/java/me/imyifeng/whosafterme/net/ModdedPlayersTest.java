@@ -80,14 +80,4 @@ class ModdedPlayersTest {
         // A disconnected player is unmarked; a rejoin re-handshakes from scratch.
         assertFalse(players.isMarked(PLAYER));
     }
-
-    @Test
-    void forgetDropsMarkAndPendingFlag() {
-        ModdedPlayers players = new ModdedPlayers();
-        players.handshake(PLAYER, SyncProtocol.PROTOCOL_VERSION);
-        players.queueFullSync(PLAYER);
-        players.forget(PLAYER);
-        assertFalse(players.isMarked(PLAYER));
-        assertFalse(players.consumeFullSync(PLAYER));
-    }
 }
