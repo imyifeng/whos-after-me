@@ -18,6 +18,27 @@ stonecutter parameters {
     // `HudRenderCallback.EVENT` before that.
     constants["hud_registry"] = current.parsed >= "1.21.6"
 
+    // Vector HUD geometry submission fork (issue #54), by GUI pipeline era (verified
+    // against the mapped jars):
+    // - 1.21.1 is the last immediate-mode GuiGraphics exposing a public
+    //   `bufferSource()` - triangles go through `getBuffer(RenderType.gui())` plus an
+    //   explicit batch end.
+    // - 1.21.4 made the buffer source private and added `drawSpecial(Consumer)` instead
+    //   (submit vertices, the call ends the batch) - covered by `!hud_registry` below.
+    // - 1.21.6+ turned the GUI extraction-based: the graphics object only accumulates
+    //   render state, so triangles ride a custom `GuiElementRenderState` submitted into
+    //   the frame's `GuiRenderState` - which the graphics classes hold privately, hence
+    //   the accessor mixins (`!fapi_modern_id` targets `GuiGraphics`, `fapi_modern_id`
+    //   targets 26.1+'s `GuiGraphicsExtractor`).
+    constants["gui_buffer_source"] = current.parsed < "1.21.2"
+
+    // The GUI element interface fork inside the extraction era: 1.21.8's
+    // `GuiElementRenderState.buildVertices` receives the stratum z and builds vertices
+    // through `addVertexWith2DPose(pose, x, y, z)`; 1.21.11 dropped the z again,
+    // matching 26.x (verified against the mapped jars - only the Anchors carry a
+    // verdict: 1.21.8 yes, 1.21.11 no).
+    constants["gui_element_layer_z"] = current.parsed >= "1.21.6" && current.parsed < "1.21.9"
+
     // Fabric API dependency id fork: the `fabric` mod id became `fabric-api` in 26.1.
     constants["fapi_modern_id"] = current.parsed >= "26.1"
 

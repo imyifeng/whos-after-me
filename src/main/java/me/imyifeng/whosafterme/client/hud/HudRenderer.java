@@ -34,10 +34,11 @@ import net.minecraft.resources.Identifier;
  * The Threat indicator HUD (spec v1 §5, spec v1 §11 ticket 8): every selected Threat
  * renders independently on the Orbit as a short arc with a centered outward triangle,
  * drawn far-to-near so nearer Threats stack on top. All drawing goes through
- * {@link GuiCanvas} ({@code fill} plus the GUI pose stack - no raw GL, safe on the 26.x
- * Vulkan backend); the geometry comes from the pure {@link OrbitGeometry},
- * {@link CameraProjection}, and {@link IndicatorShapes} modules, so this class is only
- * the per-frame glue.
+ * {@link GuiCanvas}, which submits the {@link IndicatorShapes} triangle meshes into each
+ * era's native GPU pipeline - real vector geometry on every anchor, no scanline raster
+ * (issue #54), and no raw GL, safe on the 26.x Vulkan backend; the geometry math comes
+ * from the pure {@link OrbitGeometry}, {@link CameraProjection}, and
+ * {@link IndicatorShapes} modules, so this class is only the per-frame glue.
  *
  * <p>Each frame the renderer reads the config live (values apply without a restart),
  * pulls the selected Threat set from {@link ClientThreats#refresh} - which self-heals
@@ -170,17 +171,16 @@ public final class HudRenderer {
         indicators.sort((a, b) -> OrbitGeometry.compareFarToNear(a.distance(), b.distance()));
         for (Indicator indicator : indicators) {
             int argb = argb(indicator.opacity());
-            for (IndicatorShapes.PlacedShape chord : IndicatorShapes.arc(
-                    orbit, indicator.orbitAngle(), indicator.halfArcRad(),
-                    IndicatorShapes.ARC_THICKNESS_PX * scale, screenRelative)) {
-                canvas.fillRotated(
-                        chord.x(), chord.y(), chord.rotationRad(), chord.ops(), argb);
-            }
-            IndicatorShapes.PlacedShape triangle = IndicatorShapes.triangle(
-                    orbit, indicator.orbitAngle(),
-                    IndicatorShapes.TRIANGLE_SIZE_PX * scale, screenRelative);
-            canvas.fillRotated(
-                    triangle.x(), triangle.y(), triangle.rotationRad(), triangle.ops(), argb);
+            canvas.triangles(
+                    IndicatorShapes.arcVertices(
+                            orbit, indicator.orbitAngle(), indicator.halfArcRad(),
+                            IndicatorShapes.ARC_THICKNESS_PX * scale, screenRelative),
+                    argb);
+            canvas.triangles(
+                    IndicatorShapes.triangleVertices(
+                            orbit, indicator.orbitAngle(),
+                            IndicatorShapes.TRIANGLE_SIZE_PX * scale, screenRelative),
+                    argb);
         }
     }
 
