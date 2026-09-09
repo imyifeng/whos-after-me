@@ -1,45 +1,67 @@
 package me.imyifeng.whosafterme.client.hud;
 
-import java.util.List;
-
-import org.joml.Matrix3x2fStack;
-//? if hud_registry {
-//?} else {
+//? if !hud_registry {
 /*import com.mojang.blaze3d.vertex.PoseStack;
-import org.joml.Quaternionf;*/
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderType;*/
+//?}
+//? if hud_registry {
+import org.joml.Matrix3x2f;
 //?}
 //? if fapi_modern_id {
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-//?} else {
-/*import net.minecraft.client.gui.GuiGraphics;*/
+import net.minecraft.client.renderer.state.gui.GuiRenderState;
+import me.imyifeng.whosafterme.mixin.GuiGraphicsExtractorAccessor;
+//?}
+//? if hud_registry && !fapi_modern_id {
+/*import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.render.state.GuiRenderState;
+import me.imyifeng.whosafterme.mixin.GuiGraphicsAccessor;*/
 //?}
 
 /**
- * The era-neutral drawing surface of the HUD renderer (spec v1 §6): paint axis-aligned
- * bars inside a translated and rotated local frame. Every Anchor can express
- * {@link IndicatorShapes}' placed shapes this way through {@code fill} and the GUI pose
- * stack only - no raw GL (safe on the 26.x Vulkan backend) and no buffer-source access
- * (which the 26.x extraction-based GUI does not expose). The renderer stays identical
- * across both HUD API lines; the only era differences absorbed here are the GUI graphics
- * type ({@code GuiGraphicsExtractor} on 26.1+, {@code GuiGraphics} below) and the pose
- * stack type (flat {@code Matrix3x2fStack} from 1.21.6, {@code PoseStack} before), both
- * forked through the workspace's version constants.
+ * The era-neutral drawing surface of the HUD renderer (spec v1 §6): submit quad-ordered
+ * triangle meshes from {@link IndicatorShapes} in viewport coordinates. Every Anchor can
+ * express those meshes natively (issue #54), with the era fork absorbed here so the
+ * renderer never branches:
+ *
+ * <ul>
+ * <li>1.21.1 - the immediate-mode {@code GuiGraphics.bufferSource()} (the only anchor
+ * that still exposes it): vertices into {@code RenderType.gui()}, batch ended.</li>
+ * <li>1.21.4 - the buffer source went private; {@code drawSpecial} submits vertices and
+ * ends the batch itself.</li>
+ * <li>1.21.6+ - the extraction-based GUI: the mesh rides an {@link IndicatorGuiElement}
+ * into the frame's {@code GuiRenderState}, reached through a small accessor mixin on the
+ * graphics class ({@code GuiGraphics} below 26.1, {@code GuiGraphicsExtractor} from
+ * 26.1 - spec v1 §6's no-remap era).</li>
+ * </ul>
+ *
+ * <p>All three paths end in the same GUI quad pipelines the era's own {@code fill} uses
+ * (position/color only, no textures), so the look is identical across anchors and no raw
+ * GL is touched (safe on the 26.x Vulkan backend). The pose at HUD-draw time is the
+ * frame's identity; it is still captured and passed along, mirroring what the era's own
+ * fills do.
  */
 final class GuiCanvas {
 
     //? if fapi_modern_id {
     private final GuiGraphicsExtractor graphics;
-    //?} else {
+    //?}
+    //? if hud_registry && !fapi_modern_id {
     /*private final GuiGraphics graphics;*/
     //?}
 
     //? if fapi_modern_id {
     GuiCanvas(GuiGraphicsExtractor graphics) {
-    //?} else {
-    /*GuiCanvas(GuiGraphics graphics) {*/
-    //?}
         this.graphics = graphics;
     }
+    //?}
+    //? if hud_registry && !fapi_modern_id {
+    /*GuiCanvas(GuiGraphics graphics) {
+        this.graphics = graphics;
+    }*/
+    //?}
 
     /** GUI-scaled viewport width in pixels (spec v1 §5.1). */
     int guiWidth() {
@@ -52,36 +74,41 @@ final class GuiCanvas {
     }
 
     /**
-     * Paints {@code ops} in a local frame translated to ({@code x}, {@code y}) and
-     * rotated by {@code rotationRad}, in the given ARGB color. {@code fill} captures the
-     * pose stack's current matrix, so the bars land as the rotated shape.
+     * Submits one quad-ordered triangle mesh ({@link IndicatorShapes}, xy pairs in
+     * viewport coordinates) in the given ARGB color. Four vertices per quad, matching
+     * the GUI pipelines' quad vertex format on every anchor.
      */
-    void fillRotated(double x, double y, double rotationRad, List<IndicatorShapes.ShapeOp> ops, int argb) {
-        // The GUI pose stack changed type at 1.21.6 (spec v1 §6): a flat 2x3 matrix
-        // stack from there on, the 3D PoseStack before.
-        //? if hud_registry {
-        Matrix3x2fStack pose = graphics.pose();
-        pose.pushMatrix();
-        pose.translate((float) x, (float) y);
-        pose.rotate((float) rotationRad);
-        //?} else {
-        /*PoseStack pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(x, y, 0.0);
-        pose.mulPose(new Quaternionf().rotationZ((float) rotationRad));*/
-        //?}
-        for (IndicatorShapes.ShapeOp op : ops) {
-            graphics.fill(
-                    (int) Math.round(op.x() - op.halfWidth()),
-                    (int) Math.round(op.y() - op.halfHeight()),
-                    (int) Math.round(op.x() + op.halfWidth()),
-                    (int) Math.round(op.y() + op.halfHeight()),
-                    argb);
+    void triangles(float[] mesh, int argb) {
+        //? if !hud_registry {
+        /*PoseStack.Pose pose = graphics.pose().last();
+        VertexConsumer vertices = graphics.bufferSource().getBuffer(RenderType.gui());
+        for (int i = 0; i < mesh.length; i += 2) {
+            vertices.addVertex(pose, mesh[i], mesh[i + 1], 0.0f).setColor(argb);
         }
-        //? if hud_registry {
-        pose.popMatrix();
-        //?} else {
-        /*pose.popPose();*/
+        // The buffer source is shared for the whole frame; ending the batch here draws
+        // the mesh now, preserving submission order - the same flush point
+        // `drawSpecial` uses on 1.21.4.
+        graphics.bufferSource().endBatch();*/
+        //?}
+        //? if fapi_modern_id {
+        renderState().addGuiElement(new IndicatorGuiElement(
+                new Matrix3x2f(graphics.pose()), mesh, argb));
+        //?}
+        //? if hud_registry && !fapi_modern_id {
+        /*renderState().submitGuiElement(new IndicatorGuiElement(
+                new Matrix3x2f(graphics.pose()), mesh, argb));*/
         //?}
     }
+
+    /** The frame's GUI render state, via the accessor mixin (1.21.6+ only). */
+    //? if fapi_modern_id {
+    private GuiRenderState renderState() {
+        return ((GuiGraphicsExtractorAccessor) graphics).whos_after_me$guiRenderState();
+    }
+    //?}
+    //? if hud_registry && !fapi_modern_id {
+    /*private GuiRenderState renderState() {
+        return ((GuiGraphicsAccessor) graphics).whos_after_me$guiRenderState();
+    }*/
+    //?}
 }

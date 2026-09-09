@@ -15,7 +15,12 @@ import org.junit.jupiter.api.Test;
  */
 class IndicatorShapesTest {
     private static final double EPS = 1e-9;
-    private static final double GEOMETRY_EPS = 1e-6;
+    /**
+     * Vertex-coordinate tolerance: the meshes store float xy pairs, so derived lengths
+     * at orbit distances (~1e3 px) carry a float32 rounding error around 1e-4 px - three
+     * orders of magnitude below the locked look's pixel budget.
+     */
+    private static final double GEOMETRY_EPS = 1e-3;
 
     /** A 1920x1080 viewport orbit at the default 78% - wide, so the modes differ. */
     private final Orbit wide = Orbit.of(1920, 1080, 78);

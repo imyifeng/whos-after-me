@@ -229,6 +229,20 @@ tasks {
             set(key, value)
         }
 
+        // Client accessor mixin classes of the vector HUD geometry (issue #54): the
+        // extraction-based GUI eras reach the frame's `GuiRenderState` through an
+        // accessor on the graphics class that holds it - `GuiGraphics` from 1.21.6
+        // through 1.21.11, 26.1+'s `GuiGraphicsExtractor` - while the immediate-mode
+        // anchors (1.21.1, 1.21.4) submit vertices directly and need no mixin. The
+        // boundaries mirror the `hud_registry`/`fapi_modern_id` constants
+        // (stonecutter.gradle.kts), which gate the accessor sources themselves; the
+        // mixin config is assembled here because resources are copied verbatim.
+        val mixinClientClasses: String = when {
+            sc.current.parsed >= "26.1" -> "[\"GuiGraphicsExtractorAccessor\"]"
+            sc.current.parsed >= "1.21.6" -> "[\"GuiGraphicsAccessor\"]"
+            else -> "[]"
+        }
+
         val props = buildMap {
             register("id", "mod.id")
             register("name", "mod.name")
@@ -237,9 +251,11 @@ tasks {
             // Fabric API mod id in `depends`: `fabric` <= 1.21.11, `fabric-api` >= 26.1.
             register("fapi_dep_id", "deps.fapi_dep_id")
             register("java_version", "mod.java")
+            put("mixin_client_classes", mixinClientClasses)
         }
 
         filesMatching("fabric.mod.json") { expand(props) }
+        filesMatching("whos_after_me.mixins.json") { expand(props) }
     }
 
     // Includes the license file in the built mod
