@@ -50,6 +50,34 @@ Other useful commands:
 - `./gradlew :<anchor>:runClient` / `runServer` - dev-run a single Anchor.
 - `./gradlew chiseledTest` - run the plain-JUnit unit suite on every Anchor (the suite
   also runs on each Anchor via `check`).
+- `./gradlew chiseledServerTest` - run the headless server gametests on every Anchor
+  (they also run on each Anchor via `check`, since Loom wires its `gameTest` run into
+  `check`). Each Anchor boots its own dedicated server with an isolated run directory
+  (`versions/<anchor>/build/run/gameTest`), so the generated worlds never clash across
+  Anchors or with the shared root `run/`. A JUnit XML report lands in
+  `versions/<anchor>/build/reports/gametest/report.xml`.
+
+## Testing (ADR-0004, spec v1 §8)
+
+The suites follow the testing strategy signed off in ADR-0004:
+
+- **Plain JUnit** (`src/test`) - the pure-logic suites: polled-diff engine, payload
+  codec, radius predicate, clear-grace state machine, cap selection, orbit geometry.
+  No Minecraft classes; run in `check` on every Anchor.
+- **Server gametests** (`src/gametest`) - the six real-mob integration tests from spec
+  §8: melee mob -> Threat, brain-memory mob -> Threat, provoked neutral -> Threat once
+  angered, ranged mob -> Threat, out-of-radius mob -> no Threat, cleared target held
+  through the grace window then dropped. They drive the production detection engine
+  through `ThreatDetector.observe` (the exact END_SERVER_TICK poll, minus the hello
+  gate the tests' mock observers never pass) and run headless on all six Anchors.
+
+The gametest sources split on version forks the same way the workspace absorbs every
+spec v1 §6 fork (constants in [stonecutter.gradle.kts](stonecutter.gradle.kts)): the
+1.21.5 GameTest annotation fork (vanilla `@GameTest` + `template` before, Fabric
+`gametest.v1` after) is the only per-era split; the 26.1 creative-mock-player read
+validation, the 26.2 `EntityTypes` holder rename, and the 1.21.8 Component assertion
+messages are absorbed by the `modern_mock_player`, `entity_types_modern`, and
+`gametest_component_asserts` constants.
 
 ### Toolchain requirements
 

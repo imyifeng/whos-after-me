@@ -97,6 +97,23 @@ public final class ThreatDetector {
         }
     }
 
+    /**
+     * One full production poll for one observer, exposed for the server gametests
+     * (ADR-0004, ticket #30): a gametest server has no connected client to receive
+     * {@code threat_sync}, so the tests read the poll's diff directly. This is the exact
+     * END_SERVER_TICK path - the radius-bounded box query, the uniform read, the
+     * Detection-radius predicate, and the tracker with its clear grace - without the
+     * marked-player gate, which the tests' mock observers never pass (no hello). Like the
+     * tick itself, it must run on the server thread, where the gametests execute.
+     */
+    public static ThreatDiff observe(ServerPlayer observer) {
+        ThreatDetector detector = active;
+        if (detector == null) {
+            throw new IllegalStateException("ThreatDetector is not active: no server is running");
+        }
+        return detector.pollPlayer(observer, radiusBlocks());
+    }
+
     private void tick(MinecraftServer server) {
         // Read live from config each poll (values apply without a restart); clamp to
         // survive a hand-edited JSON file (the screen enforces the documented ranges).
@@ -212,10 +229,15 @@ public final class ThreatDetector {
      * falling back to the brain's {@code ATTACK_TARGET} memory for mobs that store their
      * target without overriding {@code getTarget()}. Comparison is by identity against
      * the observing player; players are not mobs, so PvP never qualifies.
+     *
+     * <p>The fallback is guarded by {@code hasMemoryValue}: brains only look up registered
+     * memories, and {@code Brain.getMemory} throws for an unregistered one (goal mobs
+     * like zombies and skeletons never register {@code ATTACK_TARGET}), so an unguarded
+     * read would break the whole poll on every goal-driven mob.
      */
     private static boolean targets(Mob mob, ServerPlayer player) {
         LivingEntity target = mob.getTarget();
-        if (target == null) {
+        if (target == null && mob.getBrain().hasMemoryValue(MemoryModuleType.ATTACK_TARGET)) {
             target = mob.getBrain().getMemory(MemoryModuleType.ATTACK_TARGET).orElse(null);
         }
         return target == player;

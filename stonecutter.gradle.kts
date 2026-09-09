@@ -30,6 +30,28 @@ stonecutter parameters {
     // the mapped jars); custom payload ids fork on the same boundary (spec v1 §4).
     constants["mojang_identifier"] = current.parsed >= "1.21.11"
 
+    // Server GameTest annotation fork (spec v1 §8, ADR-0004): Mojang reworked the vanilla
+    // framework at 1.21.5, and Fabric's `gametest.v1` annotation replaced the vanilla one
+    // (whose `template` attribute era the anchors below 1.21.5 use). Only the gametest
+    // sources fork on this constant; the scenario bodies are shared.
+    constants["gametest_api_v1"] = current.parsed >= "1.21.5"
+
+    // 26.2 moved the built-in entity type constants from `EntityType` to a new `EntityTypes`
+    // holder (verified against the mapped jars; 26.1.2 still has them on `EntityType`). The
+    // gametest spawn factories resolve mob types through the era's holder class.
+    constants["entity_types_modern"] = current.parsed >= "26.2"
+
+    // 26.1 turned the mob target read into a validated one (`Mob.setTarget` drops creative
+    // and spectator players via `asValidTarget`), while the vanilla in-level mock player
+    // the gametests observe through is creative. The gametests build a survival observer
+    // on those anchors instead of using the helper. Verified against the mapped jars.
+    constants["modern_mock_player"] = current.parsed >= "26.1"
+
+    // The 1.21.8 gametest assertion fork: that release's `GameTestHelper` took `Component`
+    // messages only, and the String overloads are back on every later Anchor (verified
+    // against the mapped jars). Only the gametest assertion utilities fork on this.
+    constants["gametest_component_asserts"] = current.parsed >= "1.21.8" && current.parsed < "1.21.9"
+
     // NOTE on the spec v1 §6 "entity world accessor rename": the `getWorld` ->
     // `getEntityWorld` rename at 1.21.9 exists only in Yarn. The Mojang names this
     // codebase is written against kept `level()` on every anchor (verified against the
@@ -53,4 +75,13 @@ tasks.register("chiseledTest") {
     group = "verification"
     description = "Runs the unit test suite on every anchor"
     dependsOn(subprojects.map { "${it.path}:test" })
+}
+
+// The server gametests (ADR-0004, spec v1 §8) run headless per anchor via Loom's
+// `gameTest` run, which `fabricApi.configureTests` wires into `check`; this is the
+// one-command all-anchor gametest run, mirroring `chiseledBuild`/`chiseledTest`.
+tasks.register("chiseledServerTest") {
+    group = "verification"
+    description = "Runs the headless server gametests on every anchor"
+    dependsOn(subprojects.map { "${it.path}:runGameTest" })
 }

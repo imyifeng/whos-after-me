@@ -29,6 +29,44 @@ repositories {
     strictMaven("https://maven.terraformersmc.com/releases", "Terraformers", "com.terraformersmc")
 }
 
+// Server gametests (ADR-0004, spec v1 §8, ticket #30): Loom's test DSL creates the
+// `gametest` source set - Stonecutter preprocesses it per anchor like `main` - and wires
+// its headless dedicated-server run (`runGameTest`) into `check`. Client gametests are
+// ticket #33's business and stay off.
+fabricApi.configureTests {
+    createSourceSet = true
+    modId = "whos_after_me_gametest"
+    enableGameTests = true
+    enableClientGameTests = false
+}
+
+// The headless gametest run boots a real dedicated server, which refuses to start without
+// an accepted Minecraft EULA; Loom only wires automatic EULA acceptance for client
+// gametest runs, so the server run accepts it here before booting. The same task drops a
+// minimal server.properties (flat world keeps the gametest area predictable). Loom gives
+// the run an isolated per-anchor directory (`build/run/gameTest`), so its generated world
+// never clashes with the shared root `run/` across Anchors.
+val acceptGameTestEula by tasks.registering {
+    val runDir = layout.buildDirectory.dir("run/gameTest")
+    outputs.file(runDir.map { it.file("eula.txt") })
+    doLast {
+        val dir = runDir.get().asFile
+        dir.mkdirs()
+        val eula = dir.resolve("eula.txt")
+        if (!eula.exists()) {
+            eula.writeText("# Accepted by the headless server gametest run (whos-after-me)\neula=true\n")
+        }
+        val properties = dir.resolve("server.properties")
+        if (!properties.exists()) {
+            properties.writeText("level-type=minecraft\\:flat\n")
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.findByName("runGameTest")?.dependsOn(acceptGameTestEula)
+}
+
 dependencies {
     val fabricApiVersion: String = sc.properties["deps.fabric_api"]
 
@@ -89,7 +127,15 @@ dependencies {
     // screen. Jar-in-Jar bundled so users install nothing extra (spec v1 §1).
     val midnightlibVersion: String = sc.properties["deps.midnightlib"]
     val midnightlib = "eu.midnightdust:midnightlib:$midnightlibVersion"
-    modImplementation(midnightlib)
+    modImplementation(midnightlib) {
+        // MidnightLib ships one build per Minecraft LINE, and its POM drags in the Fabric
+        // API umbrella of that line. For the 1.21.4 Anchor that is the 1.21.5-line build
+        // (upstream ships no dedicated 1.21.4 jar), whose umbrella conflicts with this
+        // Anchor's own Fabric API at dev-run time. The correct-era umbrella is already on
+        // every runtime via the modLocalRuntime entry above, so the transitive copy is
+        // dropped.
+        exclude(group = "net.fabricmc.fabric-api", module = "fabric-api")
+    }
     include(midnightlib)
 
     // ModMenu is an optional dependency (ADR-0003): the config screen opens from
@@ -97,6 +143,10 @@ dependencies {
     // Compile-only so the mod never requires ModMenu at runtime.
     val modmenuVersion: String = sc.properties["deps.modmenu"]
     modCompileOnly("com.terraformersmc:modmenu:$modmenuVersion")
+
+    // Server GameTest API (ADR-0004): the gametest source set compiles and runs against
+    // `fabric-gametest-api-v1`, which exists on every Anchor (testing research, #17).
+    add("modGametestImplementation", fabricApi.module("fabric-gametest-api-v1", fabricApiVersion))
 
     // Plain JUnit for the pure-logic unit suites (ADR-0004, spec v1 §8): the suites
     // need no Minecraft classes and run in `check` on every Anchor. No Fabric Loader
@@ -111,7 +161,17 @@ loom {
     runConfigs.all {
         preferGradleTask = true
         generateRunConfig = true
-        runDirectory = rootProject.file("run") // Shares the run directory between versions
+        // Only the manual dev runs share the root `run/` directory; the headless gametest
+        // run keeps the isolated per-anchor `build/run/gameTest` Loom gave it, so its
+        // generated world never clashes with other Anchors'.
+        if (name != "gameTest") {
+            runDirectory = rootProject.file("run") // Shares the run directory between versions
+        }
+    }
+
+    runConfigs.getByName("gameTest") {
+        // JUnit XML test report from the headless run (testing research, #17).
+        vmArg("-Dfabric-api.gametest.report-file=${layout.buildDirectory.get().asFile}/reports/gametest/report.xml")
     }
 }
 
