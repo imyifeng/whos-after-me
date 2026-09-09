@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "whos_after_me_gametest",
+  "version": "0.1.0",
+  "name": "Who's After Me server gametests",
+  "description": "Headless server GameTest suite for the threat detection engine (spec v1 section 8, ADR-0004). Test-only; never shipped.",
+  "authors": [
+    "imyifeng"
+  ],
+  "license": "Apache-2.0",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": [
+      "me.imyifeng.whosafterme.gametest.WhosAfterMeGameTests"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17"
+  }
+}
