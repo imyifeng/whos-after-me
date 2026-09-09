@@ -186,6 +186,39 @@ class IndicatorShapesTest {
     }
 
     @Test
+    void everyQuadWindsLikeAVanillaFill() {
+        // The GUI pipelines cull back faces (RenderPipelines.GUI ships with culling on -
+        // verified on the 26.2 canary, issue #54): a quad wound any other way than the
+        // era's own fill quad (ColoredRectangleRenderState order, negative shoelace sum
+        // in y-down screen coordinates) is silently discarded by the GPU.
+        double halfArc = Math.toRadians(9);
+        float[] absoluteArc = IndicatorShapes.arcVertices(wide, -Math.PI / 3, halfArc, 3.0, false);
+        for (int q = 0; q < quadCount(absoluteArc); q++) {
+            assertTrue(shoelace(absoluteArc, q) < 0,
+                    "Absolute arc quad " + q + " is back-facing");
+        }
+        float[] screenArc = IndicatorShapes.arcVertices(wide, Math.PI / 3, halfArc, 3.0, true);
+        for (int q = 0; q < quadCount(screenArc); q++) {
+            assertTrue(shoelace(screenArc, q) < 0,
+                    "Screen-relative arc quad " + q + " is back-facing");
+        }
+        float[] triangle = IndicatorShapes.triangleVertices(wide, 1.0, 12.0, false);
+        assertTrue(shoelace(triangle, 0) < 0, "the triangle quad is back-facing");
+    }
+
+    /** Shoelace sum of one quad in a mesh (negative = the vanilla fill winding). */
+    private static double shoelace(float[] mesh, int quad) {
+        int o = quad * 8;
+        double sum = 0;
+        for (int v = 0; v < 4; v++) {
+            int a = o + v * 2;
+            int b = o + (v + 1) % 4 * 2;
+            sum += (double) mesh[a] * mesh[b + 1] - (double) mesh[b] * mesh[a + 1];
+        }
+        return sum;
+    }
+
+    @Test
     void triangleScalesWithTheConfiguredSize() {
         float[] mesh = IndicatorShapes.triangleVertices(circle, 0, 24.0, false);
 
@@ -279,17 +312,18 @@ class IndicatorShapesTest {
     /**
      * The {@code i}-th sampled ring vertex of an arc mesh ({@code steps + 1} samples,
      * shared between neighboring quads): {@code outer} picks the outer band ring,
-     * {@code false} the inner one. Quads are laid out as (inner_i, outer_i, outer_i+1,
-     * inner_i+1), so sample {@code i < steps} reads quad {@code i}'s leading pair and
-     * sample {@code steps} reads the last quad's trailing pair.
+     * {@code false} the inner one. Quads are laid out as (outer_i, inner_i, inner_i+1,
+     * outer_i+1) - the vanilla fill winding (see {@link #everyQuadWindsLikeAVanillaFill})
+     * - so sample {@code i < steps} reads quad {@code i}'s leading pair and sample
+     * {@code steps} reads the last quad's trailing pair.
      */
     private static double[] arcRingPoint(float[] mesh, int i, boolean outer) {
         int steps = quadCount(mesh);
         int offset;
         if (i < steps) {
-            offset = i * 8 + (outer ? 2 : 0);
+            offset = i * 8 + (outer ? 0 : 2);
         } else {
-            offset = (steps - 1) * 8 + (outer ? 4 : 6);
+            offset = (steps - 1) * 8 + (outer ? 6 : 4);
         }
         return new double[] {mesh[offset], mesh[offset + 1]};
     }

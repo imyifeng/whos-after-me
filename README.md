@@ -114,6 +114,19 @@ The per-version API forks are absorbed by the workspace, not by per-anchor build
   (`KeyBindingHelper` -> `KeyMappingHelper` in 26.1).
 - **Keybind category** - the `keymap_category_object` Stonecutter constant (true on
   1.21.11+) selects registered `KeyMapping.Category` records vs plain category strings.
+- **Vector HUD geometry** - the indicator arc and triangle are triangle meshes
+  (issue #54), submitted into each era's GUI pipeline: `GuiGraphics.bufferSource()` on
+  1.21.1 (the `gui_buffer_source` constant), `drawSpecial` on 1.21.4, and a custom
+  `GuiElementRenderState` on 1.21.6+. The extraction-based eras reach the frame's
+  `GuiRenderState` through an accessor mixin on the graphics class - `GuiGraphics`
+  below 26.1, `GuiGraphicsExtractor` from 26.1 (the `fapi_modern_id` boundary), listed
+  in the `mixins` entry that `processResources` assembles per Anchor. 1.21.8's element
+  interface hands a stratum z to `buildVertices`; 1.21.11 dropped it again
+  (`gui_element_layer_z`). Mixin member names are remapped at jar level by Loom - no
+  annotation processor or refmap involved (verified inside the built jars). The meshes
+  wind every quad like a vanilla `fill` quad: the GUI pipelines cull back faces
+  (`RenderPipelines.GUI` ships with culling on, verified on the 26.2 canary), so a
+  quad wound the other way is silently discarded by the GPU.
 - **Mappings era** - the codebase is written against Mojang names on every Anchor;
   `loomx.applyMojangMappings()` applies them on the obfuscated Anchors and is a no-op
   on the unobfuscated ones.

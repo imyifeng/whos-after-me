@@ -8,11 +8,14 @@ package me.imyifeng.whosafterme.client.hud;
  * outward along the orbit normal.
  *
  * <p>Shapes are emitted as viewport-space triangle meshes (issue #54): flat
- * {@code float[]} arrays of xy pairs, four vertices per quad, the vertex order the GUI
- * quad pipelines consume ({@code inner_i, outer_i, outer_i+1, inner_i+1} along the
- * band; the triangle closes as a degenerate quad by repeating its apex). The renderer
- * submits them straight into the era's GPU pipeline, so edges are true geometric edges
- * instead of a scanline raster - at every GUI scale the outline stays pixel-exact.
+ * {@code float[]} arrays of xy pairs, four vertices per quad, each quad wound like a
+ * vanilla {@code fill} quad ({@code ColoredRectangleRenderState} order, negative
+ * shoelace sum in y-down screen coordinates). That winding is load-bearing: the GUI
+ * pipelines cull back faces ({@code RenderPipelines.GUI} is built with culling on -
+ * verified against the 26.2 canary), so a quad wound the other way is silently
+ * discarded by the GPU. The renderer submits the meshes straight into the era's GPU
+ * pipeline, so edges are true geometric edges instead of a scanline raster - at every
+ * GUI scale the outline stays pixel-exact.
  * Filling one quad from four vertices is the native shape of every GUI pipeline the
  * anchors ship ({@code RenderType.gui()} quads below 1.21.6, the GUI render pipelines'
  * quad builders from 1.21.6 on), so no index buffers or strips are needed.
@@ -55,6 +58,9 @@ public final class IndicatorShapes {
      * path along the outward normal (a stroked line of constant width, as the prototype
      * draws it). Returns {@code 8 * arcSteps(halfArcRad)} floats.
      *
+     * <p>Quad vertex order: {@code outer_i, inner_i, inner_i+1, outer_i+1} - the same
+     * winding as a vanilla {@code fill} quad (see the class doc on back-face culling).
+     *
      * @param screenRelative selects the Orbit placement style (see class docs)
      */
     public static float[] arcVertices(
@@ -77,14 +83,14 @@ public final class IndicatorShapes {
             double nextOuterY = ringY(orbit, angle, halfThickness, screenRelative);
 
             int o = 8 * i;
-            mesh[o] = (float) innerX;
-            mesh[o + 1] = (float) innerY;
-            mesh[o + 2] = (float) outerX;
-            mesh[o + 3] = (float) outerY;
-            mesh[o + 4] = (float) nextOuterX;
-            mesh[o + 5] = (float) nextOuterY;
-            mesh[o + 6] = (float) nextInnerX;
-            mesh[o + 7] = (float) nextInnerY;
+            mesh[o] = (float) outerX;
+            mesh[o + 1] = (float) outerY;
+            mesh[o + 2] = (float) innerX;
+            mesh[o + 3] = (float) innerY;
+            mesh[o + 4] = (float) nextInnerX;
+            mesh[o + 5] = (float) nextInnerY;
+            mesh[o + 6] = (float) nextOuterX;
+            mesh[o + 7] = (float) nextOuterY;
 
             innerX = nextInnerX;
             innerY = nextInnerY;
@@ -98,7 +104,9 @@ public final class IndicatorShapes {
      * The triangle: base centered on the Orbit point at {@code angleRad}, apex reaching
      * {@code sizePx} outward along the orbit normal (prototype {@code drawTri}). Emitted
      * as the quad (base left, base right, apex, apex) - the repeated apex closes the quad
-     * around the single triangle. Returns 8 floats.
+     * around the single triangle, and the base pair is ordered so the quad winds like a
+     * vanilla {@code fill} quad (see the class doc on back-face culling). Returns 8
+     * floats.
      *
      * @param screenRelative selects the Orbit placement style and, with it, the normal:
      *     the ellipse normal in Absolute mode, the view-ray direction in Screen-relative
@@ -119,13 +127,15 @@ public final class IndicatorShapes {
         double ny = normalY(orbit, pointX, pointY, screenRelative);
         // The tangent at the orbit point: the base edge runs along it, half its width to
         // either side - the axis perpendicular to the base through its midpoint is the
-        // outward normal, which is the locked pointing direction (issue #53).
+        // outward normal, which is the locked pointing direction (issue #53). The two
+        // base corners go in tangent order (first against the normal's left, then its
+        // right): with the apex third, that quad winds like a vanilla fill.
         double baseHalf = TRIANGLE_BASE_SPREAD * sizePx;
         float[] mesh = new float[8];
-        mesh[0] = (float) (pointX - ny * baseHalf);
-        mesh[1] = (float) (pointY + nx * baseHalf);
-        mesh[2] = (float) (pointX + ny * baseHalf);
-        mesh[3] = (float) (pointY - nx * baseHalf);
+        mesh[0] = (float) (pointX + ny * baseHalf);
+        mesh[1] = (float) (pointY - nx * baseHalf);
+        mesh[2] = (float) (pointX - ny * baseHalf);
+        mesh[3] = (float) (pointY + nx * baseHalf);
         mesh[4] = (float) (pointX + nx * sizePx);
         mesh[5] = (float) (pointY + ny * sizePx);
         mesh[6] = mesh[4];
