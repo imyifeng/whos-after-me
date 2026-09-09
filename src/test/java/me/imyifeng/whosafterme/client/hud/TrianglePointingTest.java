@@ -2,12 +2,7 @@ package me.imyifeng.whosafterme.client.hud;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.List;
-
 import org.junit.jupiter.api.Test;
-
-import me.imyifeng.whosafterme.client.hud.IndicatorShapes.PlacedShape;
-import me.imyifeng.whosafterme.client.hud.IndicatorShapes.ShapeOp;
 
 /**
  * Regression tests for the triangle pointing reported broken in visual QA: the
@@ -37,9 +32,18 @@ class TrianglePointingTest {
         return -distance * Math.cos(bearingRad);
     }
 
-    /** The screen direction the canvas' rotation aims the shape's axis at. */
-    private static double[] axisOf(double rotationRad) {
-        return new double[] {-Math.sin(rotationRad), Math.cos(rotationRad)};
+    /**
+     * The screen direction the triangle's base-to-apex axis aims at: the normalized
+     * vector from the base midpoint (the first two vertices) to the apex (the repeated
+     * third vertex of the quad-ordered mesh).
+     */
+    private static double[] axisOf(float[] mesh) {
+        double baseMidX = (mesh[0] + mesh[2]) / 2.0;
+        double baseMidY = (mesh[1] + mesh[3]) / 2.0;
+        double axisX = mesh[4] - baseMidX;
+        double axisY = mesh[5] - baseMidY;
+        double length = Math.hypot(axisX, axisY);
+        return new double[] {axisX / length, axisY / length};
     }
 
     private static double cross(double ax, double ay, double bx, double by) {
@@ -85,8 +89,9 @@ class TrianglePointingTest {
                                         viewport[0], viewport[1], dx, 0.0, dz))
                         : OrbitGeometry.absoluteOrbitAngle(relativeBearing);
 
-                PlacedShape triangle = IndicatorShapes.triangle(
+                float[] mesh = IndicatorShapes.triangleVertices(
                         orbit, orbitAngle, IndicatorShapes.TRIANGLE_SIZE_PX, screenRelative);
+                double[] axis = axisOf(mesh);
 
                 // Mirror the renderer's placement: Absolute parameterizes the ellipse,
                 // Screen-relative walks the view ray to its ellipse crossing.
@@ -96,7 +101,6 @@ class TrianglePointingTest {
                 double py = screenRelative
                         ? orbit.centerY() - Math.cos(orbitAngle) * orbit.radiusAlong(orbitAngle)
                         : orbit.yAt(orbitAngle);
-                double[] axis = axisOf(triangle.rotationRad());
                 double[] normal = outwardNormal(orbit, orbitAngle);
 
                 boolean wide = viewport[0] > viewport[1];
@@ -121,21 +125,19 @@ class TrianglePointingTest {
                             < Math.sin(TOLERANCE_RAD), "axis off the view ray at " + where);
                 }
 
-                // The apex must be the outward end: the bars' area centroid must sit
-                // between the orbit point and the shape's outward reach (prototype
-                // drawTri: base on the orbit, apex at one size outward). An inverted
-                // triangle (apex on the orbit, base outward) has its centroid beyond
-                // half the reach and fails here.
-                List<ShapeOp> ops = triangle.ops();
-                double area = 0.0;
-                double moment = 0.0;
-                for (ShapeOp op : ops) {
-                    double w = op.halfWidth() * 2.0;
-                    area += w;
-                    moment += w * op.y();
-                }
-                double centroidY = moment / area;
-                assertTrue(centroidY < IndicatorShapes.TRIANGLE_SIZE_PX / 2.0,
+                // The apex must be the outward end: the corners' area centroid must sit
+                // between the orbit point and half the shape's outward reach (prototype
+                // drawTri: base on the orbit, apex at one size outward - the centroid of
+                // that triangle rides one third of the reach). An inverted triangle (apex
+                // on the orbit, base outward) has its centroid beyond half the reach and
+                // fails here.
+                double centroidX = (mesh[0] + mesh[2] + mesh[4]) / 3.0;
+                double centroidY = (mesh[1] + mesh[3] + mesh[5]) / 3.0;
+                double baseMidX = (mesh[0] + mesh[2]) / 2.0;
+                double baseMidY = (mesh[1] + mesh[3]) / 2.0;
+                double centroidReach = (centroidX - baseMidX) * axis[0]
+                        + (centroidY - baseMidY) * axis[1];
+                assertTrue(centroidReach < IndicatorShapes.TRIANGLE_SIZE_PX / 2.0,
                         "triangle inverted (apex on the orbit) at " + where);
             }
         }
