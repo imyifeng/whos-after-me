@@ -2,6 +2,7 @@ package me.imyifeng.whosafterme;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import eu.midnightdust.lib.config.MidnightConfig;
+import me.imyifeng.whosafterme.client.hud.HudRenderer;
 import me.imyifeng.whosafterme.client.store.ClientThreats;
 import me.imyifeng.whosafterme.config.WhosAfterMeConfig;
 import me.imyifeng.whosafterme.net.ClientSync;
@@ -31,8 +32,8 @@ import org.lwjgl.glfw.GLFW;
  * live and writes the same JSON file MidnightConfig owns. Also registers the client
  * side of the sync protocol: the hello handshake and the threat_sync receiver
  * (spec v1 §4), plus the threat store lifecycle (clear on dimension change, respawn,
- * and disconnect, spec v1 §5.4). Later tickets extend this initializer with the HUD
- * registration (spec v1 §11 ticket 8).
+ * and disconnect, spec v1 §5.4), and the HUD renderer on the anchor's HUD API line
+ * (spec v1 §11 ticket 8).
  */
 @Environment(EnvType.CLIENT)
 public class WhosAfterMeClient implements ClientModInitializer {
@@ -53,6 +54,8 @@ public class WhosAfterMeClient implements ClientModInitializer {
         // Threat store lifecycle (spec v1 §5.4): clear on dimension change, respawn,
         // and world disconnect.
         ClientThreats.register();
+        // The Threat indicator HUD (spec v1 §5, ticket 8) on this anchor's HUD API line.
+        HudRenderer.register();
         //? if keymap_category_object {
         toggleHud = register(new KeyMapping(
                 "key.whos_after_me.toggle", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, TOGGLE_CATEGORY));
