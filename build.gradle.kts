@@ -31,22 +31,30 @@ repositories {
 
 // Server gametests (ADR-0004, spec v1 §8, ticket #30): Loom's test DSL creates the
 // `gametest` source set - Stonecutter preprocesses it per anchor like `main` - and wires
-// its headless dedicated-server run (`runGameTest`) into `check`. Client gametests are
-// ticket #33's business and stay off.
+// its headless dedicated-server run (`runGameTest`) into `check`. Client gametests
+// (ADR-0004, ADR-0007, ticket #31) ride the same source set through the `clientGameTest`
+// run (`runClientGameTest`, not wired into `check`); they exist only where the
+// `fabric-client-gametest-api-v1` module does - every Anchor but 1.21.1 (testing
+// research, #17).
+val clientGametests: Boolean = sc.current.parsed >= "1.21.4"
+
 fabricApi.configureTests {
     createSourceSet = true
     modId = "whos_after_me_gametest"
     enableGameTests = true
-    enableClientGameTests = false
+    enableClientGameTests = clientGametests
+    // The client gametest's in-process dedicated server refuses to boot without an
+    // accepted EULA; Loom writes `eula.txt` into the run directory before launching.
+    eula = true
 }
 
-// The headless gametest run boots a real dedicated server, which refuses to start without
-// an accepted Minecraft EULA; Loom only wires automatic EULA acceptance for client
-// gametest runs, so the server run accepts it here before booting. The same task drops a
-// minimal server.properties (flat world keeps the gametest area predictable). Loom gives
-// the run an isolated per-anchor directory (`build/run/gameTest`), so its generated world
-// never clashes with the shared root `run/` across Anchors.
-val acceptGameTestEula by tasks.registering {
+// The headless server gametest run boots a real dedicated server, which refuses to start
+// without an accepted Minecraft EULA; Loom only wires automatic EULA acceptance for
+// client gametest runs, so the server run accepts it here before booting. The same task
+// drops a minimal server.properties (flat world keeps the gametest area predictable).
+// Loom gives the run an isolated per-anchor directory (`build/run/gameTest`), so its
+// generated world never clashes with the shared root `run/` across Anchors.
+val acceptServerGameTestEula by tasks.registering {
     val runDir = layout.buildDirectory.dir("run/gameTest")
     outputs.file(runDir.map { it.file("eula.txt") })
     doLast {
@@ -64,7 +72,7 @@ val acceptGameTestEula by tasks.registering {
 }
 
 afterEvaluate {
-    tasks.findByName("runGameTest")?.dependsOn(acceptGameTestEula)
+    tasks.findByName("runGameTest")?.dependsOn(acceptServerGameTestEula)
 }
 
 dependencies {
@@ -135,6 +143,12 @@ dependencies {
         // every runtime via the modLocalRuntime entry above, so the transitive copy is
         // dropped.
         exclude(group = "net.fabricmc.fabric-api", module = "fabric-api")
+        // The same POM drags in its line's ModMenu as a runtime dependency - on the
+        // 1.21.4 Anchor that is ModMenu 14.0.0-rc.1, which declares a Minecraft 1.21.5
+        // dependency, so any client-side run (client gametests, ticket #31; dev runs)
+        // is rejected by the loader before it starts. ModMenu stays optional (ADR-0003):
+        // compile-only here, so the runtime copy is simply dropped.
+        exclude(group = "com.terraformersmc", module = "modmenu")
     }
     include(midnightlib)
 
@@ -147,6 +161,13 @@ dependencies {
     // Server GameTest API (ADR-0004): the gametest source set compiles and runs against
     // `fabric-gametest-api-v1`, which exists on every Anchor (testing research, #17).
     add("modGametestImplementation", fabricApi.module("fabric-gametest-api-v1", fabricApiVersion))
+    // Client GameTest API (ADR-0004, ticket #31): the E2E threat sync scenarios and the
+    // canary screenshot smoke compile against `fabric-client-gametest-api-v1`, which
+    // exists from 1.21.4 on - 1.21.1 has no client gametest module at any Fabric API
+    // version (testing research, #17), so the dependency and the sources stay off there.
+    if (clientGametests) {
+        add("modGametestImplementation", fabricApi.module("fabric-client-gametest-api-v1", fabricApiVersion))
+    }
 
     // Plain JUnit for the pure-logic unit suites (ADR-0004, spec v1 §8): the suites
     // need no Minecraft classes and run in `check` on every Anchor. No Fabric Loader
@@ -161,10 +182,24 @@ loom {
     runConfigs.all {
         preferGradleTask = true
         generateRunConfig = true
+        // The client gametest run disables Fabric's test network synchronizer (its own
+        // documented opt-out): on the 1.21.11-line module build, the plain disconnect of
+        // a finished `TestDedicatedServerContext` is flagged as "interfacing with packets
+        // at a lower level" while the runner tears the client down, crashing the run
+        // after the tests themselves passed. The E2E scenarios only poll the client
+        // threat store through `waitFor`/`runOnClient` - no packet-lockstep assertions -
+        // so the looser synchronization costs nothing here. The property is unknown (and
+        // simply ignored) on the 26.2 module build, which needs no opt-out.
+        if (name == "clientGameTest") {
+            vmArg("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
+        }
         // Only the manual dev runs share the root `run/` directory; the headless gametest
-        // run keeps the isolated per-anchor `build/run/gameTest` Loom gave it, so its
-        // generated world never clashes with other Anchors'.
-        if (name != "gameTest") {
+        // and client gametest runs keep their isolated per-anchor directories
+        // (`build/run/gameTest`, `build/run/clientGameTest` - the latter is wiped and
+        // rebuilt by Loom's `deleteGameTestRunDir` on every run, which must never reach
+        // the shared directory), so their generated worlds never clash with other
+        // Anchors'.
+        if (name != "gameTest" && name != "clientGameTest") {
             runDirectory = rootProject.file("run") // Shares the run directory between versions
         }
     }
