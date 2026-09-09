@@ -74,6 +74,9 @@ dependencies {
         "fabric-registry-sync-v0",
         "fabric-data-attachment-api-v1",
         blockGetterModule,
+        // Threat indicator HUD registration (spec v1 §6, ticket 8): HudRenderCallback
+        // before 1.21.6, HudElementRegistry from 1.21.6 through 26.x.
+        "fabric-rendering-v1",
         // Toggle keybind registration (spec v1 §7, ADR-0003).
         keybindModule,
         *(permissionModule?.let { arrayOf(it) } ?: arrayOf<String>()),
