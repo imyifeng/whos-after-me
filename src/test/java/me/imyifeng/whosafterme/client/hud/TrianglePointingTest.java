@@ -29,7 +29,7 @@ class TrianglePointingTest {
     private static final double FOV_RAD = Math.toRadians(70.0);
 
     /** Camera frame shared with the renderer: yaw 0 faces -z, positive yaw toward +x. */
-    private static double bearingBearingToOffsetX(double bearingRad, double distance) {
+    private static double bearingToOffsetX(double bearingRad, double distance) {
         return distance * Math.sin(bearingRad);
     }
 
@@ -74,7 +74,7 @@ class TrianglePointingTest {
             for (int deg = -180; deg < 180; deg += 15) {
                 double bearing = Math.toRadians(deg);
                 double distance = 8.0;
-                double dx = bearingBearingToOffsetX(bearing, distance);
+                double dx = bearingToOffsetX(bearing, distance);
                 double dz = bearingToOffsetZ(bearing, distance);
 
                 double relativeBearing = OrbitGeometry.relativeBearing(
