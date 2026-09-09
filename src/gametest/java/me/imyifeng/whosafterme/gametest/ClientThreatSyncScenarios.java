@@ -13,7 +13,6 @@ import me.imyifeng.whosafterme.detection.ClearGrace;
 import me.imyifeng.whosafterme.net.SyncProtocol;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
-import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -108,7 +107,7 @@ final class ClientThreatSyncScenarios {
      * the architecture diagram (spec §2), nothing mocked.
      */
     static void e2eThreatReachesClientStore(ClientGameTestContext context) {
-        withConnectedThreat(context, (server, connection, zombie) -> {
+        withConnectedThreat(context, (server, zombie) -> {
             int zombieId = zombie.getId();
             context.waitFor(client -> ClientThreats.store().contains(zombieId), THREAT_WAIT_TICKS);
             assertThreatOnClient(context, zombieId);
@@ -123,7 +122,7 @@ final class ClientThreatSyncScenarios {
      * the server thread - after one poll has observed the clear and armed the window.
      */
     static void e2eThreatRemovalClearsClientStore(ClientGameTestContext context) {
-        withConnectedThreat(context, (server, connection, zombie) -> {
+        withConnectedThreat(context, (server, zombie) -> {
             int zombieId = zombie.getId();
             context.waitFor(client -> ClientThreats.store().contains(zombieId), THREAT_WAIT_TICKS);
             assertThreatOnClient(context, zombieId);
@@ -154,7 +153,7 @@ final class ClientThreatSyncScenarios {
      */
     //? if client_gametest_canary {
     static void screenshotSmoke(ClientGameTestContext context) {
-        withConnectedThreat(context, (server, connection, zombie) -> {
+        withConnectedThreat(context, (server, zombie) -> {
             // A noon sky behind the indicator: the ADD wait above ran in the helper's
             // frozen midnight, so this restores a bright, star-free backdrop before the
             // screenshot. The zombie survives the brief exposure (fire ticks are slow
@@ -211,7 +210,7 @@ final class ClientThreatSyncScenarios {
                     setMobSpawning(server, false);
                     context.waitFor(client -> ClientThreats.store().contains(zombie.getId()),
                             THREAT_WAIT_TICKS);
-                    scenario.run(server, connection, zombie);
+                    scenario.run(server, zombie);
                     server.runOnServer(minecraftServer -> zombie.discard());
                 } finally {
                     restoreServerConfig(server, saved);
@@ -223,7 +222,7 @@ final class ClientThreatSyncScenarios {
     /** The scenario callback: runs with the threat live on the connected client. */
     @FunctionalInterface
     private interface Scenario {
-        void run(TestDedicatedServerContext server, TestServerConnection connection, Mob zombie);
+        void run(TestDedicatedServerContext server, Mob zombie);
     }
 
     /**
