@@ -1,0 +1,176 @@
+# The ADR-0007 release sweep (spec v1 §11 ticket 11): a tag push runs the full
+# sweep - compile + package + headless server gametests on all six Anchors and
+# client gametests on every 1.21.4+ Anchor - and then stages a DRAFT release.
+# The draft carries no artifacts: per ADR-0007 they attach only after a human
+# walks docs/visual-qa.md and records the sign-off in the release notes
+# (.github/workflows/release-artifacts.yml verifies it and attaches the jars).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Standing default (ADR-0007): one run per ref (here: per tag).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: Generate Anchor matrix
+    runs-on: ubuntu-latest
+    outputs:
+      json: ${{ steps.generate.outputs.json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6
+
+      - name: Generate the Anchor matrix from the Stonecutter workspace
+        id: generate
+        run: echo "json=$(python3 .github/scripts/generate-matrix.py)" >> "$GITHUB_OUTPUT"
+
+  # Full sweep, server half (ADR-0007): compile + package + headless server
+  # gametests on every Anchor - the same per-Anchor recipe as the ci.yml gate.
+  # The jar is uploaded as a run artifact so the human gate can QA the exact
+  # release-candidate build (docs/visual-qa.md scenario 10 needs the 1.21.1 jar).
+  anchor:
+    name: "anchor (${{ matrix.version }}): build + server gametests"
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.json).anchor }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@0781fc6af30d3e1f67f2d243034e1a15cf5f3677 # v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          validate-wrappers: true
+
+      - name: Build and run the server gametests
+        env:
+          ANCHOR: ${{ matrix.version }}
+        run: ./gradlew ":$ANCHOR:build" ":$ANCHOR:runGameTest" --stacktrace
+
+      - name: Upload the release-candidate jar
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: jars-${{ matrix.version }}
+          path: build/libs/**/*.jar
+          if-no-files-found: error
+
+  # Full sweep, client half (ADR-0007): client gametests on every 1.21.4+
+  # Anchor. Serial run (`--max-workers=1` - parallel workers trip the
+  # 1.21.4-line module's hard-coded 10 s in-process server timeout, PR #50),
+  # `xvfb-run` for a deterministic software-GL display on GPU-less CI runners,
+  # retry once for the known network-synchronizer flake (ADR-0007).
+  client-sweep:
+    name: client sweep (${{ matrix.version }})
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.json).client }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@0781fc6af30d3e1f67f2d243034e1a15cf5f3677 # v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          validate-wrappers: true
+
+      - name: Ensure Xvfb is available
+        run: command -v xvfb-run >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y xvfb; }
+
+      - name: Run the client gametests (serial, retry once)
+        env:
+          ANCHOR: ${{ matrix.version }}
+        run: |
+          xvfb-run -a ./gradlew ":$ANCHOR:runClientGameTest" --max-workers=1 --stacktrace \
+            || xvfb-run -a ./gradlew ":$ANCHOR:runClientGameTest" --max-workers=1 --stacktrace
+
+  # Stages the draft release only if the whole sweep passed; `if: always()` keeps
+  # the outcome visible when a sweep job failed, was cancelled, or was skipped.
+  stage-release:
+    name: Stage draft release
+    needs: [anchor, client-sweep]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+    steps:
+      - name: Evaluate the full sweep
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == 'true' ]] \
+            || [[ "${{ contains(needs.*.result, 'cancelled') }}" == 'true' ]] \
+            || [[ "${{ contains(needs.*.result, 'skipped') }}" == 'true' ]]; then
+            echo "The full sweep did not pass; no release is staged: ${{ toJSON(needs.*.result) }}"
+            exit 1
+          fi
+          echo "Full sweep green for $TAG."
+
+      - name: Stage the draft release for the human visual-QA gate
+        run: |
+          cat > body.md <<EOF
+          Release candidate $TAG of Who's After Me.
+
+          ## Status: awaiting the human visual-QA gate (ADR-0007)
+
+          The automated full sweep is green for this tag: compile + package +
+          headless server gametests on all six Anchors, and client gametests on
+          every 1.21.4+ Anchor. This draft carries no artifacts yet - per
+          ADR-0007 they attach only after a human walks the visual-QA checklist
+          and records the sign-off in these notes.
+
+          ## How to clear the gate
+
+          1. Download the release-candidate jars from this tag's release
+             workflow run artifacts (jars-<anchor>; scenario 10 of the
+             checklist needs the 1.21.1 jar of this exact build).
+          2. Walk all ten scenarios of
+             [docs/visual-qa.md]($REPO_URL/blob/$TAG/docs/visual-qa.md),
+             noting pass/fail per scenario plus anything that looks off.
+          3. Record the results in this section, then flip the sign-off line
+             below to "- [x]" with your @handle. Keep the line's wording
+             intact: the release-artifacts workflow greps for exactly it.
+          4. Dispatch the release-artifacts workflow with this tag - it
+             re-verifies the sweep and the sign-off, then attaches the six
+             Anchor jars to this draft.
+          5. Publish the release. Publishing stays a human act.
+
+          ## Sign-off
+
+          - [ ] Visual QA checklist (docs/visual-qa.md) walked and recorded by @
+          EOF
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --draft=true --title="Who's After Me $TAG" --notes-file body.md
+          else
+            gh release create "$TAG" --draft --title="Who's After Me $TAG" --notes-file body.md
+          fi
+          echo "Staged draft release: $(gh release view "$TAG" --json url --jq .url)"

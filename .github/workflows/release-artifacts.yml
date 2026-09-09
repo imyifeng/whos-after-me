@@ -1,0 +1,96 @@
+# Second half of the ADR-0007 release gate: attaches the six Anchor jars to the
+# staged draft release - but only after a human walked docs/visual-qa.md and
+# recorded the sign-off in the release notes (ADR-0007: artifacts attach to the
+# GitHub release only after sign-off). Dispatched with the tag once the sign-off
+# is recorded; publishing the release afterwards stays a human act.
+name: release-artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of the staged draft release (for example v0.1.0)
+        required: true
+        type: string
+
+# Standing default (ADR-0007): one run per ref - re-dispatching the same tag
+# cancels the superseded run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.tag }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  attach:
+    name: Verify visual-QA sign-off and attach artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: The staged release must exist as a draft
+        run: |
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "true" \
+            || { echo "Release $TAG is not a draft - nothing to attach to."; exit 1; }
+
+      - name: The draft notes must record the visual-QA sign-off
+        run: |
+          gh release view "$TAG" --json body --jq .body > body.md
+          # The exact marker line the release workflow's draft template ships,
+          # flipped to checked with the walker named. Kept word-for-word in
+          # sync with the template in .github/workflows/release.yml.
+          grep -Eq '^- \[x\] Visual QA checklist \(docs/visual-qa\.md\) walked and recorded by @[A-Za-z0-9-]+' body.md \
+            || {
+              echo "No recorded visual-QA sign-off in the release notes of $TAG."
+              echo "Walk docs/visual-qa.md, record the results in the release notes, and flip the sign-off line."
+              echo "--- current notes ---"
+              cat body.md
+              exit 1
+            }
+
+      - name: The release sweep must be green for this tag
+        run: |
+          sha="$(git rev-parse "$TAG^{commit}")"
+          conclusion="$(gh run list --workflow release.yml --commit "$sha" --json status,conclusion --limit 20 \
+            | jq -r '[.[] | select(.status == "completed")][0].conclusion // empty')"
+          if [[ -z "$conclusion" ]]; then
+            echo "No completed release workflow run found for $TAG ($sha) - run the release workflow first."
+            exit 1
+          fi
+          if [[ "$conclusion" != "success" ]]; then
+            echo "The release sweep for $TAG concluded with '$conclusion', not 'success'."
+            exit 1
+          fi
+          echo "Release sweep green for $TAG."
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@0781fc6af30d3e1f67f2d243034e1a15cf5f3677 # v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          validate-wrappers: true
+
+      - name: Build all six Anchors
+        run: ./gradlew chiseledBuild --stacktrace
+
+      - name: Attach the Anchor jars to the draft release
+        run: |
+          mapfile -t jars < <(find build/libs -name '*.jar' ! -name '*-sources.jar' | sort)
+          echo "Attaching to $TAG:"
+          printf '%s\n' "${jars[@]}"
+          gh release upload "$TAG" "${jars[@]}" --clobber
+          echo "Attached. Publish the release to ship it (a human act, ADR-0007)."
