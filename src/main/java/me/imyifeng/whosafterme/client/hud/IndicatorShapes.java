@@ -95,8 +95,8 @@ public final class IndicatorShapes {
     /**
      * The triangle: base centered on the Orbit point at {@code angleRad}, apex reaching
      * {@code sizePx} outward along the orbit normal (prototype {@code drawTri}). Painted
-     * as scanlines that widen linearly from the apex to the base, so the shape reads
-     * identically on fill-only pipelines.
+     * as scanlines that narrow linearly from the base on the orbit to the apex, so the
+     * shape reads identically on fill-only pipelines.
      *
      * @param screenRelative selects the Orbit placement style and, with it, the normal:
      *     the ellipse normal in Absolute mode, the view-ray direction in Screen-relative
@@ -108,16 +108,20 @@ public final class IndicatorShapes {
         double normalX;
         double normalY;
         if (screenRelative) {
-            // Radial direction: the ray the indicator sits on (prototype orbitNormal).
+            // Radial direction: the ray the indicator sits on (prototype orbitNormal) -
+            // the direction of the Threat's screen offset, which is what "toward the
+            // Threat" means in this mode. Coincides with the ellipse normal on circles.
             double dx = pointX - orbit.centerX();
             double dy = pointY - orbit.centerY();
             double length = Math.hypot(dx, dy);
             normalX = dx / length;
             normalY = dy / length;
         } else {
-            // Ellipse normal: the normalized gradient ((p-c)/rx, (p-c)/ry).
-            double gx = (pointX - orbit.centerX()) / orbit.radiusX();
-            double gy = (pointY - orbit.centerY()) / orbit.radiusY();
+            // Ellipse normal: the normalized gradient of the implicit ellipse equation,
+            // ((p-c)/rx^2, (p-c)/ry^2) - perpendicular to the orbit at every bearing
+            // (unlike the unit-circle radial, which only agrees at the axis bearings).
+            double gx = (pointX - orbit.centerX()) / (orbit.radiusX() * orbit.radiusX());
+            double gy = (pointY - orbit.centerY()) / (orbit.radiusY() * orbit.radiusY());
             double length = Math.hypot(gx, gy);
             normalX = gx / length;
             normalY = gy / length;
@@ -125,14 +129,16 @@ public final class IndicatorShapes {
         // Rotation that aims the local +y axis (screen down) along the outward normal.
         double rotationRad = Math.atan2(-normalX, normalY);
 
+        // Prototype profile: half-width 0.55 * size at the base (s = 0, on the orbit)
+        // shrinking linearly to the apex at s = size, one size outward.
         int rows = (int) Math.ceil(sizePx / TRIANGLE_SCANLINE_PX);
         List<ShapeOp> ops = new ArrayList<>(rows);
         for (int i = 0; i < rows; i++) {
-            double fraction = (i + 1) / (double) rows;
+            double fromBase = sizePx * (i + 0.5) / rows;
             ops.add(new ShapeOp(
                     0,
-                    sizePx * (i + 0.5) / rows,
-                    TRIANGLE_BASE_SPREAD * sizePx * fraction,
+                    fromBase,
+                    TRIANGLE_BASE_SPREAD * sizePx * (1.0 - fromBase / sizePx),
                     TRIANGLE_SCANLINE_PX / 2.0));
         }
         return new PlacedShape(pointX, pointY, rotationRad, List.copyOf(ops));

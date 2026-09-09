@@ -141,28 +141,32 @@ class IndicatorShapesTest {
 
         // Base centered on the orbit point at the top of the orbit...
         assertPointNear(triangle.x(), triangle.y(), circle.centerX(), circle.centerY() - radius);
-        // ...with local +y (the apex direction) rotated onto the outward normal (0, -1).
-        double apexX = -Math.sin(triangle.rotationRad());
-        double apexY = Math.cos(triangle.rotationRad());
-        assertPointNear(apexX, apexY, 0, -1);
+        // ...with local +y (the outward direction) rotated onto the normal (0, -1).
+        double outwardX = -Math.sin(triangle.rotationRad());
+        double outwardY = Math.cos(triangle.rotationRad());
+        assertPointNear(outwardX, outwardY, 0, -1);
 
-        IndicatorShapes.ShapeOp widest = triangle.ops().getLast();
-        assertEquals(6.6, widest.halfWidth(), GEOMETRY_EPS, "base half-width is 0.55 x size");
-        IndicatorShapes.ShapeOp tallest = triangle.ops().getLast();
-        assertEquals(12.0, tallest.y() + tallest.halfHeight(), GEOMETRY_EPS,
+        // Prototype drawTri: the base sits ON the orbit at half-width 0.55 x size
+        // (within one scanline of taper) and the apex reaches one size outward.
+        IndicatorShapes.ShapeOp base = triangle.ops().getFirst();
+        double rows = triangle.ops().size();
+        assertEquals(6.6, base.halfWidth(), 6.6 / rows + GEOMETRY_EPS,
+                "base half-width is 0.55 x size on the orbit point");
+        IndicatorShapes.ShapeOp apexEnd = triangle.ops().getLast();
+        assertEquals(12.0, apexEnd.y() + apexEnd.halfHeight(), GEOMETRY_EPS,
                 "the apex reaches exactly one size outward of the orbit point");
     }
 
     @Test
-    void triangleWidensFromApexToBase() {
+    void triangleNarrowsFromBaseToApex() {
         IndicatorShapes.PlacedShape triangle =
                 IndicatorShapes.triangle(circle, 1.0, 12.0, false);
 
         List<IndicatorShapes.ShapeOp> ops = triangle.ops();
         assertTrue(ops.size() >= 12, "a 12 px triangle resolves at about one scanline per pixel");
         for (int i = 1; i < ops.size(); i++) {
-            assertTrue(ops.get(i).halfWidth() >= ops.get(i - 1).halfWidth(),
-                    "scanlines widen monotonically from the apex to the base");
+            assertTrue(ops.get(i).halfWidth() <= ops.get(i - 1).halfWidth(),
+                    "scanlines narrow monotonically from the base on the orbit to the apex");
         }
         assertEquals(0, ops.getFirst().x(), GEOMETRY_EPS, "scanlines stay on the pointing axis");
     }
@@ -172,9 +176,13 @@ class IndicatorShapesTest {
         IndicatorShapes.PlacedShape triangle =
                 IndicatorShapes.triangle(circle, 0, 24.0, false);
 
-        IndicatorShapes.ShapeOp apex = triangle.ops().getLast();
-        assertEquals(13.2, apex.halfWidth(), GEOMETRY_EPS);
-        assertEquals(24.0, apex.y() + apex.halfHeight(), GEOMETRY_EPS);
+        IndicatorShapes.ShapeOp base = triangle.ops().getFirst();
+        double rows = triangle.ops().size();
+        assertEquals(13.2, base.halfWidth(), 13.2 / rows + GEOMETRY_EPS,
+                "the base scales with the configured size");
+        IndicatorShapes.ShapeOp apexEnd = triangle.ops().getLast();
+        assertEquals(24.0, apexEnd.y() + apexEnd.halfHeight(), GEOMETRY_EPS,
+                "the apex reach scales with the configured size");
     }
 
     @Test
@@ -188,9 +196,14 @@ class IndicatorShapesTest {
         double normalX = -Math.sin(triangle.rotationRad());
         double normalY = Math.cos(triangle.rotationRad());
 
-        // The Absolute-mode normal matches the prototype's ((p-c)/rx, (p-c)/ry) direction.
-        double gradientX = pointX / wide.radiusX();
-        double gradientY = pointY / wide.radiusY();
+        // The Absolute-mode normal is the true ellipse normal - the normalized gradient
+        // of the implicit equation ((p-c)/rx^2, (p-c)/ry^2) - so the triangle stays
+        // perpendicular to the orbit at every bearing. (The prototype's drawTri code
+        // normalized ((p-c)/rx, (p-c)/ry), which reduces to the unit-circle radial and
+        // leans off the arc away from the axis bearings; the port deliberately corrects
+        // that here, per the visual-QA pointing report.)
+        double gradientX = pointX / (wide.radiusX() * wide.radiusX());
+        double gradientY = pointY / (wide.radiusY() * wide.radiusY());
         double length = Math.hypot(gradientX, gradientY);
         assertPointNear(normalX, normalY, gradientX / length, gradientY / length);
 
