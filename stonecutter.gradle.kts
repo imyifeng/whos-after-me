@@ -52,6 +52,22 @@ stonecutter parameters {
     // against the mapped jars). Only the gametest assertion utilities fork on this.
     constants["gametest_component_asserts"] = current.parsed >= "1.21.8" && current.parsed < "1.21.9"
 
+    // Client GameTest availability (spec v1 §8, ADR-0004): `fabric-client-gametest-api-v1`
+    // ships from 1.21.4 onward and is absent from the entire 1.21.1 line (testing research,
+    // #17). Gates the client gametest sources, the module dependency, and the run.
+    constants["client_gametest"] = current.parsed >= "1.21.4"
+
+    // The screenshot smoke canary (ADR-0007): the pixel-level HUD check rides an
+    // experimental API on a GPU, so it runs only on 26.2, the CI canary and default
+    // development Anchor. Rolling the canary means editing this line (and the template).
+    constants["client_gametest_canary"] = current.version == "26.2"
+
+    // The spawn gamerule id fork: Mojang renamed the gamerule ids at 1.21.11
+    // (`doMobSpawning` became `spawn_mobs`; verified against the mapped jars for
+    // 1.21.4, 1.21.8, 1.21.11, 26.1.2, and 26.2 - 1.21.11's run rejected the old id).
+    // Only the client gametest scenario's deterministic-defaults override forks on this.
+    constants["spawn_gamerule_modern"] = current.parsed >= "1.21.11"
+
     // NOTE on the spec v1 §6 "entity world accessor rename": the `getWorld` ->
     // `getEntityWorld` rename at 1.21.9 exists only in Yarn. The Mojang names this
     // codebase is written against kept `level()` on every anchor (verified against the
@@ -84,4 +100,23 @@ tasks.register("chiseledServerTest") {
     group = "verification"
     description = "Runs the headless server gametests on every anchor"
     dependsOn(subprojects.map { "${it.path}:runGameTest" })
+}
+
+// The client gametests (ADR-0004, ADR-0007, ticket #31) run via Loom's `clientGameTest`
+// run on the anchors that ship the module (1.21.4+; 1.21.1 has none). The run task only
+// exists on those anchors, and it is registered while each subproject configures, so the
+// edge is attached after evaluation through its task path - the same string form as
+// `chiseledServerTest` above (a lazy `tasks.matching(...).configureEach` would never
+// fire: nothing realizes the subproject tasks while Gradle computes this task's graph).
+val chiseledClientTest = tasks.register("chiseledClientTest") {
+    group = "verification"
+    description = "Runs the client gametests on every anchor that ships them (1.21.4+)"
+}
+
+subprojects {
+    afterEvaluate {
+        if (tasks.findByName("runClientGameTest") != null) {
+            chiseledClientTest.get().dependsOn("${project.path}:runClientGameTest")
+        }
+    }
 }

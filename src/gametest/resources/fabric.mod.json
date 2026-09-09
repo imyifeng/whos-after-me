@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "whos_after_me_gametest",
   "version": "0.1.0",
-  "name": "Who's After Me server gametests",
-  "description": "Headless server GameTest suite for the threat detection engine (spec v1 section 8, ADR-0004). Test-only; never shipped.",
+  "name": "Who's After Me gametests",
+  "description": "Headless GameTest suite for the threat detection engine and the client threat sync (spec v1 section 8, ADR-0004). Test-only; never shipped.",
   "authors": [
     "imyifeng"
   ],
@@ -12,6 +12,9 @@
   "entrypoints": {
     "fabric-gametest": [
       "me.imyifeng.whosafterme.gametest.WhosAfterMeGameTests"
+    ],
+    "fabric-client-gametest": [
+      "me.imyifeng.whosafterme.gametest.WhosAfterMeClientGameTests"
     ]
   },
   "depends": {
