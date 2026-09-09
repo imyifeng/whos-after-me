@@ -3,7 +3,6 @@ package me.imyifeng.whosafterme.client.hud;
 //? if !hud_registry {
 /*import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderType;*/
 //?}
 //? if hud_registry {
@@ -14,9 +13,11 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.state.gui.GuiRenderState;
 import me.imyifeng.whosafterme.mixin.GuiGraphicsExtractorAccessor;
 //?}
+//? if !fapi_modern_id {
+/*import net.minecraft.client.gui.GuiGraphics;*/
+//?}
 //? if hud_registry && !fapi_modern_id {
-/*import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.render.state.GuiRenderState;
+/*import net.minecraft.client.gui.render.state.GuiRenderState;
 import me.imyifeng.whosafterme.mixin.GuiGraphicsAccessor;*/
 //?}
 
@@ -48,7 +49,7 @@ final class GuiCanvas {
     //? if fapi_modern_id {
     private final GuiGraphicsExtractor graphics;
     //?}
-    //? if hud_registry && !fapi_modern_id {
+    //? if !fapi_modern_id {
     /*private final GuiGraphics graphics;*/
     //?}
 
@@ -57,7 +58,7 @@ final class GuiCanvas {
         this.graphics = graphics;
     }
     //?}
-    //? if hud_registry && !fapi_modern_id {
+    //? if !fapi_modern_id {
     /*GuiCanvas(GuiGraphics graphics) {
         this.graphics = graphics;
     }*/
@@ -79,7 +80,7 @@ final class GuiCanvas {
      * the GUI pipelines' quad vertex format on every anchor.
      */
     void triangles(float[] mesh, int argb) {
-        //? if !hud_registry {
+        //? if gui_buffer_source {
         /*PoseStack.Pose pose = graphics.pose().last();
         VertexConsumer vertices = graphics.bufferSource().getBuffer(RenderType.gui());
         for (int i = 0; i < mesh.length; i += 2) {
@@ -89,6 +90,15 @@ final class GuiCanvas {
         // the mesh now, preserving submission order - the same flush point
         // `drawSpecial` uses on 1.21.4.
         graphics.bufferSource().endBatch();*/
+        //?}
+        //? if !hud_registry && !gui_buffer_source {
+        /*graphics.drawSpecial(bufferSource -> {
+            VertexConsumer vertices = bufferSource.getBuffer(RenderType.gui());
+            PoseStack.Pose pose = graphics.pose().last();
+            for (int i = 0; i < mesh.length; i += 2) {
+                vertices.addVertex(pose, mesh[i], mesh[i + 1], 0.0f).setColor(argb);
+            }
+        });*/
         //?}
         //? if fapi_modern_id {
         renderState().addGuiElement(new IndicatorGuiElement(

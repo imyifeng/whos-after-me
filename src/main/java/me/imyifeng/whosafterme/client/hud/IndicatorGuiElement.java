@@ -1,3 +1,4 @@
+//? if hud_registry {
 package me.imyifeng.whosafterme.client.hud;
 
 //? if fapi_modern_id {
@@ -37,34 +38,31 @@ import org.joml.Matrix3x2f;
  * @param mesh quad-ordered xy pairs in viewport coordinates (IndicatorShapes contract)
  * @param argb the fill color including the computed indicator opacity
  */
-//? if fapi_modern_id {
 record IndicatorGuiElement(Matrix3x2f pose, float[] mesh, int argb)
         implements GuiElementRenderState {
-//?} else {
-/*record IndicatorGuiElement(Matrix3x2f pose, float[] mesh, int argb)
-        implements GuiElementRenderState {*/
-//?}
 
     /**
      * Builds the quads into the GUI buffer: every four vertices form one quad, each
      * vertex transformed by the captured pose and colored flat - the same vertices the
      * era's {@code ColoredRectangleRenderState} would build for a fill, minus the
-     * rectangle constraint.
+     * rectangle constraint. 1.21.8's interface hands in the stratum z; 1.21.11 dropped
+     * it again (see the {@code gui_element_layer_z} constant).
      */
-    //? if fapi_modern_id {
-    @Override
-    public void buildVertices(VertexConsumer vertices) {
-        for (int i = 0; i < mesh.length; i += 2) {
-            vertices.addVertexWith2DPose(pose, mesh[i], mesh[i + 1]).setColor(argb);
-        }
-    }
-    //?} else {
+    //? if gui_element_layer_z {
     /*@Override
     public void buildVertices(VertexConsumer vertices, float z) {
         for (int i = 0; i < mesh.length; i += 2) {
             vertices.addVertexWith2DPose(pose, mesh[i], mesh[i + 1], z).setColor(argb);
         }
     }*/
+    //?}
+    //? if !gui_element_layer_z {
+    @Override
+    public void buildVertices(VertexConsumer vertices) {
+        for (int i = 0; i < mesh.length; i += 2) {
+            vertices.addVertexWith2DPose(pose, mesh[i], mesh[i + 1]).setColor(argb);
+        }
+    }
     //?}
 
     /** The plain position/color GUI pipeline - the {@code fill} pipeline of the era. */
@@ -112,3 +110,4 @@ record IndicatorGuiElement(Matrix3x2f pose, float[] mesh, int argb)
                 .transformMaxBounds(pose);
     }
 }
+//?}

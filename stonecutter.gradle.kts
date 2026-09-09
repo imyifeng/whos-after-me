@@ -32,6 +32,13 @@ stonecutter parameters {
     //   targets 26.1+'s `GuiGraphicsExtractor`).
     constants["gui_buffer_source"] = current.parsed < "1.21.2"
 
+    // The GUI element interface fork inside the extraction era: 1.21.8's
+    // `GuiElementRenderState.buildVertices` receives the stratum z and builds vertices
+    // through `addVertexWith2DPose(pose, x, y, z)`; 1.21.11 dropped the z again,
+    // matching 26.x (verified against the mapped jars - only the Anchors carry a
+    // verdict: 1.21.8 yes, 1.21.11 no).
+    constants["gui_element_layer_z"] = current.parsed >= "1.21.6" && current.parsed < "1.21.9"
+
     // Fabric API dependency id fork: the `fabric` mod id became `fabric-api` in 26.1.
     constants["fapi_modern_id"] = current.parsed >= "26.1"
 
